@@ -173,7 +173,7 @@ function initPush(d) {
   if (!('Notification' in window)) { box.innerHTML = '<div class="warn">Browser ini belum mendukung notifikasi. Cek dashboard ini secara berkala.</div>'; return; }
   const base = location.pathname.replace(/[^/]*$/, '');
   window.OneSignalDeferred = window.OneSignalDeferred || [];
-  OneSignalDeferred.push(async OS => {
+  OneSignalDeferred.push(async OS => { try {
     await OS.init({ appId: CFG.onesignal_app_id, serviceWorkerPath: base.slice(1) + 'OneSignalSDKWorker.js', serviceWorkerParam: { scope: base }, allowLocalhostAsSecureOrigin: true });
     await OS.login(d.penghuni_id);
     const instBtn = () => (DEFERRED && !standalone) ? '<button class="big-btn sec" id="inBtn" style="margin-bottom:12px">📲 Pasang di layar utama</button>' : '';
@@ -193,7 +193,8 @@ function initPush(d) {
     window.__redraw = draw;
     OS.User.PushSubscription.addEventListener('change', draw);
     draw();
-  });
+  } catch (e) { box.innerHTML = '<div class="warn"><b>Notifikasi error:</b> ' + esc((e && e.message) || e) + '</div>'; } });
+  setTimeout(() => { if (!box.innerHTML) box.innerHTML = '<div class="warn">Layanan notifikasi belum termuat. Muat ulang halaman.</div>'; }, 8000);
 }
 
 /* ================= ADMIN ================= */
