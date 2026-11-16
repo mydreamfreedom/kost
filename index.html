@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dashboard Kost</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f766e">
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--ink:#1f2937;--mut:#6b7280;--line:#e5e7eb;--pri:#0f766e;--ok:#15803d;--warn:#b45309;--bad:#b91c1c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+header{background:var(--pri);color:#fff;padding:14px 16px;padding-top:calc(14px + env(safe-area-inset-top))}
+header h1{margin:0;font-size:18px}header p{margin:2px 0 0;opacity:.85;font-size:13px}
+main{max-width:860px;margin:0 auto;padding:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.mut{color:var(--mut);font-size:13px}.big{font-size:20px;font-weight:700}
+.badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+.b-ok{background:#dcfce7;color:var(--ok)}.b-warn{background:#fef3c7;color:var(--warn)}.b-bad{background:#fee2e2;color:var(--bad)}.b-gray{background:#e5e7eb;color:#374151}
+button,.btn{background:var(--pri);color:#fff;border:0;border-radius:9px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer}
+button.sec{background:#e5e7eb;color:#111}button.bad{background:var(--bad)}button.sm{padding:6px 10px;font-size:13px}
+button.big-btn{width:100%;padding:13px;font-size:16px}
+input,select,textarea{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;background:#fff;margin:4px 0 10px}
+label{font-size:13px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}.stat b{display:block;font-size:19px}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px}
+.tabs button{background:#e5e7eb;color:#111;white-space:nowrap}.tabs button.on{background:var(--pri);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:600;font-size:12px}
+dialog{border:0;border-radius:14px;padding:16px;width:min(440px,94vw)}dialog::backdrop{background:#0006}
+.warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:12px;margin-bottom:12px}
+.ok{background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.neg{color:var(--bad)}.right{text-align:right}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:99;max-width:90vw}
+</style>
+</head>
+<body>
+<header><h1 id="hTitle">Dashboard Kost</h1><p id="hSub"></p></header>
+<main id="app"><div class="card">Memuat…</div></main>
+<div id="toast"></div>
+<dialog id="dlg"></dialog>
+
+<script>
+/* ====== KONFIGURASI: isi URL Web App Apps Script (hasil Deploy) ====== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbwGbqYdK0ituuhmp7RyhOHtuAUE_AMBLfFx6jP10a5Lodi6i501styh0AWw0fvNwEu6/exec';
+/* ====================================================================== */
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rp = n => 'Rp' + Math.round(n || 0).toLocaleString('id-ID');
+const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+const tgl = s => { if (!s) return '-'; const [y, m, d] = s.split('-'); return +d + ' ' + MONTHS[+m - 1] + ' ' + y; };
+function toast(m) { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 3200); }
+
+async function api(action, data = {}) {
+  if (API_URL.startsWith('GANTI')) throw new Error('API_URL belum diisi di index.html');
+  const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(Object.assign({ action }, data)) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error);
+  return j.data;
+}
+async function safe(fn) { try { return await fn(); } catch (e) { toast(e.message); return null; } }
+
+function badge(b) {
+  if (b.sisa <= 0) return '<span class="badge b-ok">Lunas</span>';
+  if (b.selisih_hari < 0) return '<span class="badge b-bad">Terlambat ' + b.terlambat_hari + ' hari</span>';
+  if (b.status === 'Sebagian') return '<span class="badge b-warn">Sebagian</span>';
+  return '<span class="badge b-gray">Belum bayar</span>';
+}
+function dueText(b) {
+  if (b.sisa <= 0) return '';
+  if (b.selisih_hari > 0) return 'Jatuh tempo ' + tgl(b.jatuh_tempo) + ' (' + b.selisih_hari + ' hari lagi)';
+  if (b.selisih_hari === 0) return 'Jatuh tempo hari ini';
+  return 'Jatuh tempo ' + tgl(b.jatuh_tempo);
+}
+function periodeLabel(p) { const [y, m] = p.split('-'); return MONTHS[+m - 1] + ' ' + y; }
+
+/* ================= PENGHUNI ================= */
+let TOKEN = new URLSearchParams(location.search).get('t') || localStorage.getItem('kost_token') || '';
+let CFG = null;
+
+async function start() {
+  try { CFG = await api('config'); $('#hTitle').textContent = CFG.nama_usaha || 'Dashboard Kost'; } catch (e) { $('#app').innerHTML = '<div class="card neg">' + esc(e.message) + '</div>'; return; }
+  const p = new URLSearchParams(location.search);
+  if (p.get('admin') !== null) return adminView();
+  if (TOKEN) { localStorage.setItem('kost_token', TOKEN); return tenantView(); }
+  $('#app').innerHTML = `<div class="card"><h3 style="margin-top:0">Masuk</h3>
+    <label>Kode akses penghuni (dari pengelola)</label><input id="code" autocapitalize="off" placeholder="mis. a1b2c3d4e5f6g7h8">
+    <button class="big-btn" onclick="enterCode()">Buka dashboard saya</button>
+    <p class="mut" style="margin-top:14px">Pengelola? <a href="?admin">Masuk sebagai admin</a></p></div>`;
+}
+function enterCode() { const c = $('#code').value.trim(); if (!c) return; TOKEN = c; localStorage.setItem('kost_token', c); history.replaceState(null, '', '?t=' + encodeURIComponent(c)); tenantView(); }
+
+async function tenantView() {
+  let d;
+  try { d = await api('tenant', { token: TOKEN }); }
+  catch (e) { localStorage.removeItem('kost_token'); $('#app').innerHTML = '<div class="card neg">' + esc(e.message) + '</div>'; return; }
+  history.replaceState(null, '', '?t=' + encodeURIComponent(TOKEN)); // agar "Add to Home Screen" menyimpan link pribadi
+  $('#hSub').textContent = d.nama + ' • Kamar ' + d.kamar + (d.lokasi ? ' • ' + d.lokasi : '');
+  const open = d.bills.filter(b => b.sisa > 0);
+  const totalSisa = open.reduce((s, b) => s + b.sisa, 0);
+  let h = '<div id="pushbox"></div>';
+  h += `<div class="card"><div class="mut">Total yang harus dibayar</div><div class="big ${totalSisa > 0 ? '' : ''}">${rp(totalSisa)}</div>
+    ${totalSisa === 0 ? '<div class="mut">Tidak ada tagihan. Terima kasih! 🙌</div>' : ''}</div>`;
+  if (d.info_pembayaran) h += `<div class="card"><b>Cara pembayaran</b><div class="mut" style="white-space:pre-line;margin-top:4px">${esc(d.info_pembayaran)}</div></div>`;
+  h += '<h3 style="margin:16px 4px 8px">Tagihan</h3>';
+  d.bills.forEach(b => {
+    h += `<div class="card"><div class="row"><b>${b.jenis === 'Deposit' ? 'Deposit' : b.jenis + ' ' + periodeLabel(b.periode)}</b>${badge(b)}</div>
+      <div class="mut">${dueText(b)}${b.keterangan ? '<br>' + esc(b.keterangan) : ''}</div>
+      <table style="margin-top:8px"><tr><td>Pokok</td><td>${rp(b.jumlah)}</td></tr>
+      ${b.denda > 0 ? `<tr><td class="neg">Denda</td><td class="neg">${rp(b.denda)}</td></tr>` : ''}
+      ${b.keringanan > 0 ? `<tr><td>Keringanan</td><td>-${rp(b.keringanan)}</td></tr>` : ''}
+      ${b.dibayar > 0 ? `<tr><td>Sudah dibayar</td><td>-${rp(b.dibayar)}</td></tr>` : ''}
+      <tr><td><b>Sisa</b></td><td><b>${rp(b.sisa)}</b></td></tr></table>
+      ${b.sisa > 0 ? `<div class="actions"><button onclick="payDlg('${b.tagihan_id}',${b.sisa})">Saya sudah bayar</button></div>` : ''}</div>`;
+  });
+  h += `<div class="mut" style="margin:4px 4px 12px">${esc(d.aturan_denda)}</div>`;
+  h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
+  h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
+  h += '</div>';
+  $('#app').innerHTML = h;
+  initPush(d);
+}
+
+function payDlg(id, sisa) {
+  const d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Konfirmasi pembayaran</h3>
+    <label>Jumlah yang dibayar (Rp)</label><input id="pj" type="number" inputmode="numeric" value="${sisa}">
+    <label>Foto bukti transfer</label><input id="pf" type="file" accept="image/*">
+    <label>Catatan (opsional)</label><input id="pc" maxlength="150">
+    <div class="actions"><button id="pbtn" onclick="payGo('${id}')">Kirim</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>
+    <p class="mut">Pembayaran akan dicek dan dikonfirmasi oleh pengelola.</p>`;
+  d.showModal();
+}
+function compress(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const max = 1100, k = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = img.width * k; c.height = img.height * k; c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .72).split(',')[1]); URL.revokeObjectURL(url); };
+    img.onerror = () => rej(new Error('Foto tidak bisa dibaca')); img.src = url;
+  });
+}
+async function payGo(id) {
+  const btn = $('#pbtn'); btn.disabled = true; btn.textContent = 'Mengirim…';
+  const r = await safe(async () => {
+    const f = $('#pf').files[0];
+    const bukti = f ? { mime: 'image/jpeg', data: await compress(f) } : null;
+    return api('submitPayment', { token: TOKEN, tagihan_id: id, jumlah: $('#pj').value, catatan: $('#pc').value, bukti });
+  });
+  btn.disabled = false; btn.textContent = 'Kirim';
+  if (r) { $('#dlg').close(); toast('Terkirim, menunggu konfirmasi pengelola'); tenantView(); }
+}
+
+/* ---- Push notification (OneSignal) ---- */
+function initPush(d) {
+  const box = $('#pushbox');
+  if (!CFG.onesignal_app_id) return;
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  if (ios && !standalone) {
+    box.innerHTML = `<div class="warn"><b>🔔 Aktifkan notifikasi tagihan (iPhone)</b>
+      <ol style="margin:6px 0 0 18px;padding:0"><li>Ketuk tombol <b>Bagikan</b> (kotak dengan panah ↑) di Safari</li><li>Pilih <b>Tambah ke Layar Utama</b> (Add to Home Screen)</li><li>Buka aplikasi dari <b>ikon di layar utama</b></li><li>Ketuk tombol <b>Aktifkan Notifikasi</b> lalu pilih <b>Izinkan</b></li></ol></div>`;
+    return;
+  }
+  if (!('Notification' in window)) { box.innerHTML = '<div class="warn">Browser ini belum mendukung notifikasi. Cek dashboard ini secara berkala.</div>'; return; }
+  const base = location.pathname.replace(/[^/]*$/, '');
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async OS => {
+    await OS.init({ appId: CFG.onesignal_app_id, serviceWorkerPath: base.slice(1) + 'OneSignalSDKWorker.js', serviceWorkerParam: { scope: base }, allowLocalhostAsSecureOrigin: true });
+    await OS.login(d.penghuni_id);
+    const draw = () => {
+      if (OS.User.PushSubscription.optedIn) {
+        box.innerHTML = '<div class="ok">🔔 Notifikasi tagihan aktif</div>';
+        if (!d.push_aktif) { d.push_aktif = true; api('registerPush', { token: TOKEN }).catch(() => {}); }
+      } else if (Notification.permission === 'denied') {
+        box.innerHTML = '<div class="warn"><b>Notifikasi diblokir.</b> Aktifkan lewat Pengaturan perangkat → Notifikasi → aplikasi ini, lalu buka ulang.</div>';
+      } else {
+        box.innerHTML = '<div class="warn"><b>🔔 Notifikasi belum aktif</b><div class="mut" style="margin:4px 0 8px">Aktifkan agar Anda diingatkan sebelum jatuh tempo.</div><button class="big-btn" id="enBtn">Aktifkan Notifikasi</button></div>';
+        $('#enBtn').onclick = async () => { await OS.Notifications.requestPermission(); draw(); };
+      }
+    };
+    OS.User.PushSubscription.addEventListener('change', draw);
+    draw();
+  });
+}
+
+/* ================= ADMIN ================= */
+let SES = localStorage.getItem('kost_admin') || '', AD = null, TAB = 'ringkas', ADMIN_NAME = localStorage.getItem('kost_admin_name') || '';
+
+function adminView() {
+  $('#hSub').textContent = 'Panel pengelola';
+  if (!SES) return loginView();
+  loadAdmin();
+}
+function loginView() {
+  $('#app').innerHTML = `<div class="card"><h3 style="margin-top:0">Login pengelola</h3>
+    <label>Nama</label><input id="ln" autocapitalize="off"><label>Password</label><input id="lp" type="password">
+    <button class="big-btn" onclick="doLogin()">Masuk</button></div>`;
+}
+async function doLogin() {
+  const r = await safe(() => api('adminLogin', { nama: $('#ln').value.trim(), password: $('#lp').value }));
+  if (r) { SES = r.session; ADMIN_NAME = r.nama; localStorage.setItem('kost_admin', SES); localStorage.setItem('kost_admin_name', ADMIN_NAME); loadAdmin(); }
+}
+function logout() { localStorage.removeItem('kost_admin'); SES = ''; loginView(); }
+const A = (action, data = {}) => api(action, Object.assign({ session: SES }, data));
+
+async function loadAdmin() {
+  try { AD = await A('adminData'); } catch (e) { toast(e.message); if (/Sesi/.test(e.message)) logout(); return; }
+  $('#hSub').textContent = 'Panel pengelola • ' + ADMIN_NAME;
+  drawAdmin();
+}
+function drawAdmin() {
+  const tabs = [['ringkas', 'Ringkasan'], ['tagihan', 'Tagihan'], ['konfirmasi', 'Konfirmasi' + (AD.pending.length ? ' (' + AD.pending.length + ')' : '')], ['penghuni', 'Penghuni'], ['biaya', 'Pengeluaran'], ['laporan', 'Laporan']];
+  $('#app').innerHTML = '<div class="tabs">' + tabs.map(t => `<button class="${TAB === t[0] ? 'on' : ''}" onclick="TAB='${t[0]}';drawAdmin()">${t[1]}</button>`).join('') + '<button class="sec" onclick="loadAdmin()">⟳</button><button class="sec" onclick="logout()">Keluar</button></div><div id="tab"></div>';
+  ({ ringkas: tRingkas, tagihan: tTagihan, konfirmasi: tKonfirmasi, penghuni: tPenghuni, biaya: tBiaya, laporan: tLaporan })[TAB]();
+}
+
+function tRingkas() {
+  const r = AD.ringkasan;
+  const bayarBulanIni = AD.bills.filter(b => b.periode === AD.hari_ini.slice(0, 7) && b.jenis.startsWith('Sewa'));
+  const sudah = bayarBulanIni.filter(b => b.sisa <= 0).length;
+  $('#tab').innerHTML = `<div class="grid">
+    <div class="stat"><span class="mut">Hunian</span><b>${r.kamar_terisi}/${r.kamar_total}</b></div>
+    <div class="stat"><span class="mut">Tunggakan</span><b class="${r.tunggakan_total ? 'neg' : ''}">${rp(r.tunggakan_total)}</b><span class="mut">${r.tunggakan_jumlah} tagihan</span></div>
+    <div class="stat"><span class="mut">Lunas bulan ini</span><b>${sudah}/${bayarBulanIni.length}</b></div>
+    <div class="stat"><span class="mut">Menunggu konfirmasi</span><b>${r.menunggu_konfirmasi}</b></div>
+    <div class="stat"><span class="mut">Push belum aktif</span><b>${r.push_belum_aktif}</b></div></div>
+    <div class="actions"><button class="sec sm" onclick="runDaily()">Jalankan pengecekan harian sekarang</button></div>`;
+}
+async function runDaily() { if (await safe(() => A('runDaily'))) { toast('Selesai'); loadAdmin(); } }
+
+function waLink(b) {
+  let hp = (b.hp || '').replace(/\D/g, ''); if (hp.startsWith('0')) hp = '62' + hp.slice(1);
+  const msg = `Halo ${b.nama}, mengingatkan tagihan kost ${b.jenis === 'Deposit' ? 'deposit' : periodeLabel(b.periode)} sebesar ${rp(b.sisa)}${b.denda > 0 ? ' (termasuk denda ' + rp(b.denda) + ')' : ''}, jatuh tempo ${tgl(b.jatuh_tempo)}. Cek dashboard Anda atau hubungi kami jika ada kendala. Terima kasih 🙏`;
+  return 'https://wa.me/' + hp + '?text=' + encodeURIComponent(msg);
+}
+function tTagihan() {
+  const f = window.TF || 'belum';
+  const list = AD.bills.filter(b => f === 'semua' || (f === 'belum' ? b.sisa > 0 : f === 'telat' ? b.sisa > 0 && b.selisih_hari < 0 : b.sisa <= 0));
+  let h = `<div class="tabs">${[['belum', 'Belum lunas'], ['telat', 'Terlambat'], ['lunas', 'Lunas'], ['semua', 'Semua']].map(x => `<button class="${f === x[0] ? 'on' : ''}" onclick="window.TF='${x[0]}';tTagihan()">${x[1]}</button>`).join('')}</div>`;
+  h += list.length ? '' : '<div class="card mut">Tidak ada data.</div>';
+  list.forEach(b => {
+    h += `<div class="card"><div class="row"><b>${esc(b.nama)} <span class="mut">• ${esc(b.kamar)} ${esc(b.lokasi)}</span></b>${badge(b)}</div>
+      <div class="mut">${b.jenis === 'Deposit' ? 'Deposit' : b.jenis + ' ' + periodeLabel(b.periode)} • ${tgl(b.jatuh_tempo)}</div>
+      <div class="row" style="margin-top:6px"><span>Pokok ${rp(b.jumlah)}${b.denda ? ' + denda <span class="neg">' + rp(b.denda) + '</span>' : ''}${b.keringanan ? ' − keringanan ' + rp(b.keringanan) : ''}</span><b>Sisa ${rp(b.sisa)}</b></div>
+      ${b.sisa > 0 ? `<div class="actions"><button class="sm" onclick="cashDlg('${b.tagihan_id}',${b.sisa})">Catat tunai</button>
+        ${b.denda - b.keringanan > 0 ? `<button class="sm sec" onclick="waiveDlg('${b.tagihan_id}',${b.denda - b.keringanan})">Keringanan denda</button>` : ''}
+        ${b.hp ? `<a class="btn sm" style="background:#25d366;text-decoration:none;font-size:13px;padding:6px 10px" target="_blank" rel="noopener" href="${waLink(b)}">Kirim via WA</a>` : ''}</div>` : ''}</div>`;
+  });
+  $('#tab').innerHTML = h;
+}
+function cashDlg(id, sisa) {
+  const d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Catat pembayaran tunai</h3><label>Jumlah (Rp)</label><input id="cj" type="number" value="${sisa}">
+    <label>Tanggal</label><input id="ct" type="date" value="${AD.hari_ini}"><label>Catatan</label><input id="cc">
+    <div class="actions"><button onclick="cashGo('${id}')">Simpan</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  d.showModal();
+}
+async function cashGo(id) { if (await safe(() => A('recordCash', { tagihan_id: id, jumlah: $('#cj').value, tanggal: $('#ct').value, catatan: $('#cc').value }))) { $('#dlg').close(); toast('Tercatat'); loadAdmin(); } }
+function waiveDlg(id, maks) {
+  const d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Keringanan denda</h3><label>Jumlah dihapus (maks ${rp(maks)})</label><input id="wj" type="number" value="${maks}">
+    <label>Alasan (wajib, tercatat)</label><textarea id="wa" rows="2"></textarea>
+    <div class="actions"><button onclick="waiveGo('${id}')">Terapkan</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  d.showModal();
+}
+async function waiveGo(id) { if (await safe(() => A('waiveFine', { tagihan_id: id, jumlah: $('#wj').value, alasan: $('#wa').value }))) { $('#dlg').close(); toast('Keringanan diterapkan'); loadAdmin(); } }
+
+function tKonfirmasi() {
+  $('#tab').innerHTML = AD.pending.length ? AD.pending.map(p => `<div class="card"><div class="row"><b>${esc(p.nama)} <span class="mut">• ${esc(p.kamar)} ${esc(p.lokasi)}</span></b><b>${rp(p.jumlah)}</b></div>
+    <div class="mut">${tgl(p.tanggal)} ${p.catatan ? '• ' + esc(p.catatan) : ''}</div>
+    <div class="actions">${p.bukti_url ? `<a href="${esc(p.bukti_url)}" target="_blank" rel="noopener" class="btn sm sec" style="text-decoration:none;color:#111">Lihat bukti</a>` : '<span class="mut">Tanpa bukti</span>'}
+    <button class="sm" onclick="conf('${p.pembayaran_id}',true)">Konfirmasi</button><button class="sm bad" onclick="conf('${p.pembayaran_id}',false)">Tolak</button></div></div>`).join('') : '<div class="card mut">Tidak ada pembayaran menunggu konfirmasi.</div>';
+}
+async function conf(id, ok) { if (!ok && !confirm('Tolak pembayaran ini?')) return; if (await safe(() => A('confirmPayment', { pembayaran_id: id, setuju: ok }))) { toast(ok ? 'Dikonfirmasi' : 'Ditolak'); loadAdmin(); } }
+
+function tPenghuni() {
+  const base = (AD.frontend_url || location.origin + location.pathname).replace(/\/$/, '');
+  let h = '<div class="actions" style="margin-bottom:10px"><button onclick="tenantDlg()">+ Penghuni baru</button></div>';
+  h += AD.tenants.map(t => `<div class="card"><div class="row"><b>${esc(t.nama)}</b><span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span></div>
+    <div class="mut">${esc(t.kamar)} • ${esc(t.lokasi)} • masuk ${tgl(t.tanggal_masuk)} • ${rp(t.harga_sewa)}/bln${t.deposit ? ' • deposit ' + rp(t.deposit) : ''}</div>
+    <div class="actions"><button class="sm sec" onclick="copyLink('${base}?t=${t.token}')">Salin link dashboard</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
+  $('#tab').innerHTML = h;
+}
+function copyLink(u) { navigator.clipboard.writeText(u).then(() => toast('Link disalin'), () => prompt('Salin link:', u)); }
+async function keluar(id, nama) { if (!confirm(nama + ' keluar dari kost? Tagihan yang belum lunas tetap tercatat.')) return; if (await safe(() => A('moveOut', { penghuni_id: id }))) { toast('Tercatat'); loadAdmin(); } }
+function tenantDlg() {
+  const kosong = AD.rooms.filter(r => r.kosong);
+  if (!kosong.length) return toast('Tidak ada kamar kosong. Tambahkan kamar di sheet "Kamar".');
+  const d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Penghuni baru</h3>
+    <label>Kamar</label><select id="nk" onchange="$('#nh').value=this.selectedOptions[0].dataset.h">${kosong.map(r => `<option value="${r.kamar_id}" data-h="${r.harga_sewa}">${esc(r.lokasi)} - ${esc(r.nama)} (${rp(r.harga_sewa)})</option>`).join('')}</select>
+    <label>Nama</label><input id="nn"><label>No. HP</label><input id="np" inputmode="tel"><label>Email (cadangan notifikasi, opsional)</label><input id="ne" type="email">
+    <label>Tanggal masuk</label><input id="nt" type="date" value="${AD.hari_ini}" oninput="prev()">
+    <label>Harga sewa per bulan (hasil kesepakatan)</label><input id="nh" type="number" value="${kosong[0].harga_sewa}" oninput="prev()">
+    <label>Deposit (Rp, boleh 0)</label><input id="nd" type="number" value="0">
+    <div class="ok" id="nprev"></div>
+    <div class="actions"><button onclick="tenantGo()">Simpan</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  d.showModal(); prev();
+}
+function prev() {
+  const t = $('#nt').value, rent = +$('#nh').value; if (!t) return;
+  const [y, m, dd] = t.split('-').map(Number), dim = new Date(y, m, 0).getDate();
+  const hari = dd === 1 ? dim : (dim - dd + (AD.prorata_hari_masuk ? 1 : 0));
+  $('#nprev').textContent = 'Tagihan pertama: ' + (dd === 1 ? 'sewa penuh ' : hari + '/' + dim + ' hari ') + '= ' + rp(Math.round(rent * hari / dim)) + '';
+}
+async function tenantGo() {
+  const r = await safe(() => A('addTenant', { kamar_id: $('#nk').value, nama: $('#nn').value, hp: $('#np').value, email: $('#ne').value, tanggal_masuk: $('#nt').value, harga_sewa: $('#nh').value, deposit: $('#nd').value }));
+  if (r) { $('#dlg').close(); toast('Tersimpan. ' + r.keterangan + ' = ' + rp(r.tagihan_pertama)); TAB = 'penghuni'; loadAdmin(); }
+}
+
+function tBiaya() {
+  const kat = ['Gaji penjaga', 'Listrik/Air/Internet', 'Perawatan & perbaikan', 'Kebersihan', 'Pajak/PBB', 'Perlengkapan', 'Lainnya'];
+  $('#tab').innerHTML = `<div class="card"><b>Catat pengeluaran</b>
+    <label>Tanggal</label><input id="xt" type="date" value="${AD.hari_ini}"><label>Lokasi</label><select id="xl"><option value="">Umum (semua lokasi)</option>${AD.locations.map(l => `<option value="${l.lokasi_id}">${esc(l.nama)}</option>`).join('')}</select>
+    <label>Kategori</label><select id="xk">${kat.map(k => `<option>${k}</option>`).join('')}</select><label>Keterangan</label><input id="xd"><label>Jumlah (Rp)</label><input id="xj" type="number" inputmode="numeric">
+    <button class="big-btn" onclick="expGo()">Simpan</button></div>
+    <div class="card"><b>Terbaru</b><table>${AD.expenses.map(x => `<tr><td>${tgl(x.tanggal)}<div class="mut">${esc(x.lokasi)} • ${esc(x.kategori)}${x.deskripsi ? ' • ' + esc(x.deskripsi) : ''}</div></td><td>${rp(x.jumlah)}</td></tr>`).join('') || '<tr><td class="mut">Belum ada.</td></tr>'}</table></div>`;
+}
+async function expGo() { if (await safe(() => A('addExpense', { tanggal: $('#xt').value, lokasi_id: $('#xl').value, kategori: $('#xk').value, deskripsi: $('#xd').value, jumlah: $('#xj').value }))) { toast('Tersimpan'); loadAdmin(); } }
+
+async function tLaporan() {
+  const yr = window.RY || AD.hari_ini.slice(0, 4);
+  $('#tab').innerHTML = '<div class="card">Memuat laporan…</div>';
+  const R = await safe(() => A('report', { tahun: yr })); if (!R) return;
+  const T = R.total, cls = n => n < 0 ? 'neg' : '';
+  $('#tab').innerHTML = `<div class="row" style="margin-bottom:8px"><b>Laba rugi ${R.tahun} (basis kas)</b><select style="width:auto;margin:0" onchange="window.RY=this.value;tLaporan()">${[0, 1, 2].map(i => +AD.hari_ini.slice(0, 4) - i).map(y => `<option ${String(y) === String(R.tahun) ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
+    <div class="grid"><div class="stat"><span class="mut">Pendapatan sewa</span><b>${rp(T.sewa)}</b></div><div class="stat"><span class="mut">Pendapatan denda</span><b>${rp(T.denda)}</b></div>
+    <div class="stat"><span class="mut">Pengeluaran</span><b>${rp(T.pengeluaran)}</b></div><div class="stat"><span class="mut">Laba bersih</span><b class="${cls(T.laba)}">${rp(T.laba)}</b></div></div>
+    <div class="card" style="margin-top:12px;overflow-x:auto"><table><tr><th>Bulan</th><th>Sewa</th><th>Denda</th><th>Biaya</th><th>Laba</th></tr>
+    ${R.bulan.map(b => `<tr><td>${MONTHS[b.m - 1]}</td><td>${rp(b.sewa)}</td><td>${rp(b.denda)}</td><td>${rp(b.pengeluaran)}</td><td class="${cls(b.laba)}">${rp(b.laba)}</td></tr>`).join('')}
+    <tr><td><b>Total</b></td><td><b>${rp(T.sewa)}</b></td><td><b>${rp(T.denda)}</b></td><td><b>${rp(T.pengeluaran)}</b></td><td class="${cls(T.laba)}"><b>${rp(T.laba)}</b></td></tr></table></div>
+    <div class="card" style="overflow-x:auto"><b>Per lokasi</b><table><tr><th>Lokasi</th><th>Pendapatan</th><th>Biaya</th><th>Laba</th></tr>
+    ${R.lokasi.map(l => `<tr><td>${esc(l.nama)}</td><td>${rp(l.sewa + l.denda)}</td><td>${rp(l.pengeluaran)}</td><td class="${cls(l.laba)}">${rp(l.laba)}</td></tr>`).join('')}</table></div>
+    <div class="card"><b>Pengeluaran per kategori</b><table>${R.kategori.map(k => `<tr><td>${esc(k.nama)}</td><td>${rp(k.jumlah)}</td></tr>`).join('') || '<tr><td class="mut">Belum ada.</td></tr>'}</table></div>
+    <p class="mut">Deposit diterima tahun ini: ${rp(T.deposit)} (kewajiban, bukan pendapatan, tidak masuk laba).</p>`;
+}
+
+start();
+</script>
+</body>
+</html>
