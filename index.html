@@ -83,6 +83,8 @@ function dueText(b) {
 function periodeLabel(p) { const [y, m] = p.split('-'); return MONTHS[+m - 1] + ' ' + y; }
 
 /* ================= PENGHUNI ================= */
+let DEFERRED = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); DEFERRED = e; if (window.__redraw) window.__redraw(); });
 let TOKEN = new URLSearchParams(location.search).get('t') || localStorage.getItem('kost_token') || '';
 let CFG = null;
 
@@ -174,17 +176,21 @@ function initPush(d) {
   OneSignalDeferred.push(async OS => {
     await OS.init({ appId: CFG.onesignal_app_id, serviceWorkerPath: base.slice(1) + 'OneSignalSDKWorker.js', serviceWorkerParam: { scope: base }, allowLocalhostAsSecureOrigin: true });
     await OS.login(d.penghuni_id);
+    const instBtn = () => (DEFERRED && !standalone) ? '<button class="big-btn sec" id="inBtn" style="margin-bottom:12px">📲 Pasang di layar utama</button>' : '';
+    const bindInst = () => { const b = $('#inBtn'); if (b) b.onclick = async () => { DEFERRED.prompt(); await DEFERRED.userChoice; DEFERRED = null; b.remove(); }; };
     const draw = () => {
       if (OS.User.PushSubscription.optedIn) {
-        box.innerHTML = '<div class="ok">🔔 Notifikasi tagihan aktif</div>';
+        box.innerHTML = '<div class="ok">🔔 Notifikasi tagihan aktif</div>' + instBtn(); bindInst();
         if (!d.push_aktif) { d.push_aktif = true; api('registerPush', { token: TOKEN }).catch(() => {}); }
       } else if (Notification.permission === 'denied') {
         box.innerHTML = '<div class="warn"><b>Notifikasi diblokir.</b> Aktifkan lewat Pengaturan perangkat → Notifikasi → aplikasi ini, lalu buka ulang.</div>';
       } else {
-        box.innerHTML = '<div class="warn"><b>🔔 Notifikasi belum aktif</b><div class="mut" style="margin:4px 0 8px">Aktifkan agar Anda diingatkan sebelum jatuh tempo.</div><button class="big-btn" id="enBtn">Aktifkan Notifikasi</button></div>';
+        box.innerHTML = '<div class="warn"><b>🔔 Notifikasi belum aktif</b><div class="mut" style="margin:4px 0 8px">Aktifkan agar Anda diingatkan sebelum jatuh tempo.</div><button class="big-btn" id="enBtn">🔔 Aktifkan Pengingat Tagihan</button></div>';
         $('#enBtn').onclick = async () => { await OS.Notifications.requestPermission(); draw(); };
+        box.insertAdjacentHTML('beforeend', instBtn()); bindInst();
       }
     };
+    window.__redraw = draw;
     OS.User.PushSubscription.addEventListener('change', draw);
     draw();
   });
@@ -236,7 +242,7 @@ function tRingkas() {
 async function runDaily() { if (await safe(() => A('runDaily'))) { toast('Selesai'); loadAdmin(); } }
 
 function waLink(b) {
-  let hp = (b.hp || '').replace(/\D/g, ''); if (hp.startsWith('0')) hp = '62' + hp.slice(1);
+  let hp = (b.hp || '').replace(/\D/g, ''); if (hp.startsWith('0')) hp = '62' + hp.slice(1); else if (hp.startsWith('8')) hp = '62' + hp;
   const msg = `Halo ${b.nama}, mengingatkan tagihan kost ${b.jenis === 'Deposit' ? 'deposit' : periodeLabel(b.periode)} sebesar ${rp(b.sisa)}${b.denda > 0 ? ' (termasuk denda ' + rp(b.denda) + ')' : ''}, jatuh tempo ${tgl(b.jatuh_tempo)}. Cek dashboard Anda atau hubungi kami jika ada kendala. Terima kasih 🙏`;
   return 'https://wa.me/' + hp + '?text=' + encodeURIComponent(msg);
 }
