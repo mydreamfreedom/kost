@@ -83,7 +83,7 @@ function dueText(b) {
   if (b.selisih_hari === 0) return 'Jatuh tempo hari ini';
   return 'Jatuh tempo ' + tgl(b.jatuh_tempo);
 }
-function periodeLabel(p) { const [y, m] = p.split('-'); return MONTHS[+m - 1] + ' ' + y; }
+function periodeLabel(p) { const m = /^(\d{4})-(\d{2})/.exec(p); if (m) return MONTHS[+m[2] - 1] + ' ' + m[1]; const d = new Date(p); return isNaN(d) ? String(p) : MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
 
 /* ================= PENGHUNI ================= */
 let DEFERRED = null;
@@ -130,7 +130,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v3</p>';
+  h += '<p class="mut" style="text-align:center">v4</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
