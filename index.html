@@ -130,6 +130,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
+  h += '<p class="mut" style="text-align:center">v3</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -174,7 +175,8 @@ function initPush(d) {
     return;
   }
   if (!('Notification' in window)) { box.innerHTML = '<div class="warn">Browser ini belum mendukung notifikasi. Cek dashboard ini secara berkala.</div>'; return; }
-  const base = location.pathname.replace(/[^/]*$/, '');
+  const seg = location.pathname.split('/')[1] || '';
+  const base = (location.hostname.endsWith('github.io') && seg && !seg.includes('.')) ? '/' + seg + '/' : '/';
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   OneSignalDeferred.push(async OS => { try {
     await OS.init({ appId: CFG.onesignal_app_id, serviceWorkerPath: base.slice(1) + 'OneSignalSDKWorker.js', serviceWorkerParam: { scope: base }, allowLocalhostAsSecureOrigin: true });
