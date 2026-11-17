@@ -52,6 +52,9 @@ dialog{border:0;border-radius:14px;padding:16px;width:min(440px,94vw)}dialog::ba
 const API_URL = 'https://script.google.com/macros/s/AKfycbwGbqYdK0ituuhmp7RyhOHtuAUE_AMBLfFx6jP10a5Lodi6i501styh0AWw0fvNwEu6/exec';
 /* ====================================================================== */
 
+/* perbaiki alamat tanpa garis miring (mis. /kost?t=...) */
+(function () { const p = location.pathname; if (!p.endsWith('/') && !/\.[a-z0-9]+$/i.test(p)) location.replace(p + '/' + location.search + location.hash); })();
+
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const rp = n => 'Rp' + Math.round(n || 0).toLocaleString('id-ID');
