@@ -116,7 +116,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v7</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v8</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -166,7 +166,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v7</p>';
+  h += '<p class="mut" style="text-align:center">v8</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -418,12 +418,41 @@ function tKonfirmasi() {
 }
 async function conf(id, ok) { if (!ok && !confirm('Tolak pembayaran ini?')) return; if (await safe(() => A('confirmPayment', { pembayaran_id: id, setuju: ok }))) { toast(ok ? 'Dikonfirmasi' : 'Ditolak'); loadAdmin(); } }
 
+/* ---- Kirim link dashboard ke penghuni lewat WhatsApp (satu ketuk per penghuni, pesan sudah terisi) ---- */
+const PESAN_LINK_DEFAULT = `Halo {nama} 👋
+Ini link dashboard tagihan kost Anda di {usaha} (Kamar {kamar}, {lokasi}):
+{link}
+
+Cara pakai:
+1. Buka link di atas, lalu simpan/bookmark.
+2. Ketuk tombol "Aktifkan Pengingat Tagihan" dan pilih "Izinkan", supaya Anda diingatkan sebelum jatuh tempo.
+(iPhone: buka lewat Safari > ketuk Bagikan > Tambah ke Layar Utama, lalu buka dari ikon di layar utama dan aktifkan notifikasi)
+
+Link ini khusus untuk Anda, mohon tidak dibagikan ke orang lain. Terima kasih 🙏`;
+const linkOf = t => kosongBase() + '/?t=' + t.token;
+function pesanLink(t) {
+  const v = { nama: t.nama, kamar: t.kamar, lokasi: t.lokasi, usaha: AD.nama_usaha || 'Kost', link: linkOf(t) };
+  return (AD.pesan_link || PESAN_LINK_DEFAULT).replace(/\{(nama|kamar|lokasi|usaha|link)\}/g, (m, k) => v[k]);
+}
+function kirimLink(pid) {
+  const t = AD.tenants.find(x => x.penghuni_id === pid); if (!t) return;
+  const hp = waNum(t.hp); if (!hp) return toast('No. HP ' + t.nama + ' belum diisi di sheet Penghuni');
+  window.open('https://wa.me/' + hp + '?text=' + encodeURIComponent(pesanLink(t)), '_blank', 'noopener');
+  t.link_dikirim = AD.hari_ini; tPenghuni();
+  A('tandaiLink', { penghuni_id: pid }).catch(() => {}); // simpan penanda, tanpa mengunci layar
+}
+function kirimBerikutnya() {
+  const t = AD.tenants.find(x => !x.link_dikirim && waNum(x.hp));
+  if (!t) { const sisa = AD.tenants.filter(x => !x.link_dikirim).length; return toast(sisa ? sisa + ' penghuni belum punya No. HP di sheet Penghuni' : 'Semua link sudah dikirim'); }
+  kirimLink(t.penghuni_id);
+}
 function tPenghuni() {
-  const base = (AD.frontend_url || location.origin + location.pathname).replace(/\/$/, '');
-  let h = '<div class="actions" style="margin-bottom:10px"><button onclick="tenantDlg()">+ Penghuni baru</button></div>';
-  h += AD.tenants.map(t => `<div class="card"><div class="row"><b>${esc(t.nama)}</b><span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span></div>
+  const base = kosongBase();
+  const belum = AD.tenants.filter(t => !t.link_dikirim).length;
+  let h = `<div class="actions" style="margin-bottom:10px"><button onclick="tenantDlg()">+ Penghuni baru</button>${belum ? `<button style="background:#25d366" onclick="kirimBerikutnya()">Kirim link berikutnya via WA (${belum} belum)</button>` : '<span class="mut">✅ Semua link sudah dikirim</span>'}</div>`;
+  h += AD.tenants.map(t => `<div class="card"><div class="row"><b>${esc(t.nama)}</b><span><span class="badge ${t.link_dikirim ? 'b-ok' : 'b-gray'}">${t.link_dikirim ? '✓ link dikirim ' + tgl(t.link_dikirim) : 'link belum dikirim'}</span> <span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span></span></div>
     <div class="mut">${esc(t.kamar)} • ${esc(t.lokasi)} • masuk ${tgl(t.tanggal_masuk)} • ${rp(t.harga_sewa)}/bln${t.deposit ? ' • deposit ' + rp(t.deposit) : ''}${t.tanggal_keluar ? '<br><b>Rencana keluar ' + tgl(t.tanggal_keluar) + '</b>' : ''}</div>
-    <div class="actions"><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button><button class="sm sec" onclick="planDlg('${t.penghuni_id}')">Rencana keluar</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
+    <div class="actions"><button class="sm" style="background:#25d366" onclick="kirimLink('${t.penghuni_id}')">${t.link_dikirim ? 'Kirim ulang via WA' : 'Kirim link via WA'}</button><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button><button class="sm sec" onclick="planDlg('${t.penghuni_id}')">Rencana keluar</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
   $('#tab').innerHTML = h;
 }
 function copyLink(u) { navigator.clipboard.writeText(u).then(() => toast('Link disalin'), () => prompt('Salin link:', u)); }
