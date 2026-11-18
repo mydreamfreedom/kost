@@ -116,7 +116,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v8</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v10</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -166,7 +166,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v8</p>';
+  h += '<p class="mut" style="text-align:center">v10</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -375,7 +375,7 @@ async function runDaily() { if (await safe(() => A('runDaily'))) { toast('Selesa
 
 function waLink(b) {
   let hp = (b.hp || '').replace(/\D/g, ''); if (hp.startsWith('0')) hp = '62' + hp.slice(1); else if (hp.startsWith('8')) hp = '62' + hp;
-  const msg = `Halo ${b.nama}, mengingatkan tagihan kost ${b.jenis === 'Deposit' ? 'deposit' : periodeLabel(b.periode)} sebesar ${rp(b.sisa)}${b.denda > 0 ? ' (termasuk denda ' + rp(b.denda) + ')' : ''}, jatuh tempo ${tgl(b.jatuh_tempo)}. Cek dashboard Anda atau hubungi kami jika ada kendala. Terima kasih 🙏`;
+  const msg = `Halo ${b.nama}, mengingatkan tagihan kost ${b.jenis === 'Deposit' ? 'deposit' : periodeLabel(b.periode)} sebesar ${rp(b.sisa)}${b.denda > 0 ? ' (termasuk denda ' + rp(b.denda) + ')' : ''}, jatuh tempo ${tgl(b.jatuh_tempo)}. Cek dashboard Anda atau hubungi kami jika ada kendala. Terima kasih.`;
   return 'https://wa.me/' + hp + '?text=' + encodeURIComponent(msg);
 }
 function tTagihan() {
@@ -419,6 +419,8 @@ function tKonfirmasi() {
 async function conf(id, ok) { if (!ok && !confirm('Tolak pembayaran ini?')) return; if (await safe(() => A('confirmPayment', { pembayaran_id: id, setuju: ok }))) { toast(ok ? 'Dikonfirmasi' : 'Ditolak'); loadAdmin(); } }
 
 /* ---- Kirim link dashboard ke penghuni lewat WhatsApp (satu ketuk per penghuni, pesan sudah terisi) ---- */
+// Emoji bisa rusak (tampil "?") jika dibawa lewat link wa.me di WhatsApp Web/komputer.
+// Karena itu di komputer pesan DISALIN ke clipboard lalu chat dibuka (emoji utuh); di HP dikirim langsung lewat link.
 const PESAN_LINK_DEFAULT = `Halo {nama} 👋
 Ini link dashboard tagihan kost Anda di {usaha} (Kamar {kamar}, {lokasi}):
 {link}
@@ -434,10 +436,23 @@ function pesanLink(t) {
   const v = { nama: t.nama, kamar: t.kamar, lokasi: t.lokasi, usaha: AD.nama_usaha || 'Kost', link: linkOf(t) };
   return (AD.pesan_link || PESAN_LINK_DEFAULT).replace(/\{(nama|kamar|lokasi|usaha|link)\}/g, (m, k) => v[k]);
 }
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+// Mode (Pengaturan > wa_mode): otomatis (bawaan: HP=langsung, komputer=salin) | langsung | salin
+function bukaWA(hp, pesan) {
+  const m = AD.wa_mode, mode = (m === 'langsung' || m === 'salin') ? m : (IS_MOBILE ? 'langsung' : 'salin');
+  if (mode === 'salin' && navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(pesan).then(
+      () => toast('Pesan sudah disalin. Di WhatsApp: tempel (Ctrl+V) lalu Kirim'),
+      () => prompt('Salin pesan ini lalu tempel di WhatsApp:', pesan));
+    window.open('https://wa.me/' + hp, '_blank', 'noopener');
+    return;
+  }
+  window.open('https://wa.me/' + hp + '?text=' + encodeURIComponent(pesan), '_blank', 'noopener');
+}
 function kirimLink(pid) {
   const t = AD.tenants.find(x => x.penghuni_id === pid); if (!t) return;
   const hp = waNum(t.hp); if (!hp) return toast('No. HP ' + t.nama + ' belum diisi di sheet Penghuni');
-  window.open('https://wa.me/' + hp + '?text=' + encodeURIComponent(pesanLink(t)), '_blank', 'noopener');
+  bukaWA(hp, pesanLink(t));
   t.link_dikirim = AD.hari_ini; tPenghuni();
   A('tandaiLink', { penghuni_id: pid }).catch(() => {}); // simpan penanda, tanpa mengunci layar
 }
