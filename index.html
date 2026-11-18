@@ -21,7 +21,7 @@ main{max-width:860px;margin:0 auto;padding:12px}
 .row{display:flex;justify-content:space-between;gap:10px;align-items:center}
 .mut{color:var(--mut);font-size:13px}.big{font-size:20px;font-weight:700}
 .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
-.b-ok{background:#dcfce7;color:var(--ok)}.b-warn{background:#fef3c7;color:var(--warn)}.b-bad{background:#fee2e2;color:var(--bad)}.b-gray{background:#e5e7eb;color:#374151}
+.b-ok{background:#dcfce7;color:var(--ok)}.b-warn{background:#fef3c7;color:var(--warn)}.b-bad{background:#fee2e2;color:var(--bad)}.b-gray{background:#e5e7eb;color:#374151}.b-blue{background:#dbeafe;color:#1d4ed8}
 button,.btn{background:var(--pri);color:#fff;border:0;border-radius:9px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer}
 button.sec{background:#e5e7eb;color:#111}button.bad{background:var(--bad)}button.sm{padding:6px 10px;font-size:13px}
 button.big-btn{width:100%;padding:13px;font-size:16px}
@@ -85,6 +85,38 @@ function dueText(b) {
 }
 function periodeLabel(p) { const m = /^(\d{4})-(\d{2})/.exec(p); if (m) return MONTHS[+m[2] - 1] + ' ' + m[1]; const d = new Date(p); return isNaN(d) ? String(p) : MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
 
+/* ================= HALAMAN PUBLIK: CEK KAMAR KOSONG (?kosong) ================= */
+function waNum(hp) { hp = String(hp || '').replace(/\D/g, ''); if (hp.startsWith('0')) hp = '62' + hp.slice(1); else if (hp.startsWith('8')) hp = '62' + hp; return hp; }
+async function publicView() {
+  $('#hSub').textContent = 'Cek ketersediaan kamar';
+  try { window.PUB = await api('availability'); }
+  catch (e) { $('#app').innerHTML = '<div class="card neg">' + esc(e.message) + '</div>'; return; }
+  $('#hTitle').textContent = window.PUB.nama_usaha || 'Kamar Kost';
+  document.title = 'Kamar kosong • ' + (window.PUB.nama_usaha || 'Kost');
+  drawPublic();
+}
+function drawPublic() {
+  const d = window.PUB, f = window.PL || '', wa = waNum(d.wa);
+  const locs = [...new Set(d.rooms.map(r => r.lokasi))];
+  window.PLOCS = locs;
+  const list = d.rooms.filter(r => !f || r.lokasi === f);
+  let h = '';
+  if (locs.length > 1) h += '<div class="tabs"><button class="' + (!f ? 'on' : '') + '" onclick="window.PL=\'\';drawPublic()">Semua lokasi</button>' + locs.map((l, i) => `<button class="${f === l ? 'on' : ''}" onclick="window.PL=window.PLOCS[${i}];drawPublic()">${esc(l)}</button>`).join('') + '</div>';
+  const btn = (msg, label) => wa ? `<a class="btn" style="display:block;text-align:center;text-decoration:none;background:#25d366;margin-top:8px" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(msg)}">${label}</a>` : '';
+  if (!list.length) h += `<div class="card"><b>Saat ini semua kamar sedang terisi.</b><div class="mut" style="margin-top:4px">Hubungi kami untuk masuk daftar tunggu.</div>${btn('Halo, saya ingin menanyakan kamar kost. Apakah ada yang akan kosong?', 'Hubungi via WhatsApp')}</div>`;
+  list.forEach(r => {
+    const msg = `Halo, saya tertarik dengan kamar ${r.nama} di ${r.lokasi} (${rp(r.harga_sewa)}/bulan). Apakah masih tersedia?`;
+    h += `<div class="card">${r.foto_url ? `<img src="${esc(r.foto_url)}" alt="" loading="lazy" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;margin-bottom:8px">` : ''}
+      <div class="row"><b>Kamar ${esc(r.nama)}</b><span class="badge ${r.status === 'Kosong' ? 'b-ok' : 'b-warn'}">${r.status === 'Kosong' ? 'Tersedia' : 'Tersedia mulai ' + tgl(r.tersedia_mulai)}</span></div>
+      <div class="mut">${esc(r.lokasi)}</div>
+      <div class="big" style="margin:6px 0">${rp(r.harga_sewa)}<span class="mut"> / bulan</span></div>
+      ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
+      ${btn(msg, 'Tanya via WhatsApp')}</div>`;
+  });
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v5</p>`;
+  $('#app').innerHTML = h;
+}
+
 /* ================= PENGHUNI ================= */
 let DEFERRED = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); DEFERRED = e; if (window.__redraw) window.__redraw(); });
@@ -92,6 +124,7 @@ let TOKEN = new URLSearchParams(location.search).get('t') || localStorage.getIte
 let CFG = null;
 
 async function start() {
+  if (new URLSearchParams(location.search).get('kosong') !== null) return publicView();
   try { CFG = await api('config'); $('#hTitle').textContent = CFG.nama_usaha || 'Dashboard Kost'; } catch (e) { $('#app').innerHTML = '<div class="card neg">' + esc(e.message) + '</div>'; return; }
   const p = new URLSearchParams(location.search);
   if (p.get('admin') !== null) return adminView();
@@ -130,7 +163,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v4</p>';
+  h += '<p class="mut" style="text-align:center">v5</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -228,10 +261,86 @@ async function loadAdmin() {
   drawAdmin();
 }
 function drawAdmin() {
-  const tabs = [['ringkas', 'Ringkasan'], ['tagihan', 'Tagihan'], ['konfirmasi', 'Konfirmasi' + (AD.pending.length ? ' (' + AD.pending.length + ')' : '')], ['penghuni', 'Penghuni'], ['biaya', 'Pengeluaran'], ['laporan', 'Laporan']];
+  const tabs = [['ringkas', 'Ringkasan'], ['kamar', 'Kamar'], ['tagihan', 'Tagihan'], ['konfirmasi', 'Konfirmasi' + (AD.pending.length ? ' (' + AD.pending.length + ')' : '')], ['penghuni', 'Penghuni'], ['biaya', 'Pengeluaran'], ['laporan', 'Laporan']];
   $('#app').innerHTML = '<div class="tabs">' + tabs.map(t => `<button class="${TAB === t[0] ? 'on' : ''}" onclick="TAB='${t[0]}';drawAdmin()">${t[1]}</button>`).join('') + '<button class="sec" onclick="loadAdmin()">⟳</button><button class="sec" onclick="logout()">Keluar</button></div><div id="tab"></div>';
-  ({ ringkas: tRingkas, tagihan: tTagihan, konfirmasi: tKonfirmasi, penghuni: tPenghuni, biaya: tBiaya, laporan: tLaporan })[TAB]();
+  ({ ringkas: tRingkas, kamar: tKamar, tagihan: tTagihan, konfirmasi: tKonfirmasi, penghuni: tPenghuni, biaya: tBiaya, laporan: tLaporan })[TAB]();
 }
+
+/* ---- Kamar: ketersediaan, booking, rencana keluar ---- */
+const plusDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const isBebas = r => r.status === 'Kosong' || (r.status === 'Akan Kosong' && !r.dibooking);
+function roomBadge(r) {
+  let h = r.status === 'Kosong' ? '<span class="badge b-ok">Kosong</span>' : r.status === 'Akan Kosong' ? '<span class="badge b-warn">Akan kosong</span>' : r.status === 'Tidak Tersedia' ? '<span class="badge b-bad">Tidak tersedia</span>' : r.status === 'Terisi' ? '<span class="badge b-gray">Terisi</span>' : '';
+  if (r.dibooking) h += ' <span class="badge b-blue">Dibooking</span>';
+  return h;
+}
+function kosongBase() { return (AD.frontend_url || location.origin + location.pathname).replace(/\/$/, ''); }
+function kosongText() {
+  const rows = AD.rooms.filter(isBebas);
+  if (!rows.length) return 'Mohon maaf, saat ini semua kamar sedang terisi. Silakan hubungi kami untuk daftar tunggu 🙏';
+  const by = {};
+  rows.forEach(r => { const l = r.lokasi || 'Lainnya'; (by[l] = by[l] || []).push(r); });
+  let t = 'Kamar tersedia - ' + (AD.nama_usaha || 'Kost') + '\n';
+  Object.keys(by).forEach(l => {
+    t += '\n*' + l + '*\n';
+    by[l].forEach(r => { t += '• ' + r.nama + ' - ' + rp(r.harga_sewa) + '/bulan' + (r.fasilitas ? ' (' + r.fasilitas + ')' : '') + (r.status === 'Akan Kosong' ? ' - tersedia mulai ' + tgl(r.tersedia_mulai) : '') + '\n'; });
+  });
+  return t + '\nLihat selengkapnya: ' + kosongBase() + '/?kosong';
+}
+function tKamar() {
+  const f = window.RF || 'bebas';
+  const flt = { bebas: isBebas, dibooking: r => r.dibooking, terisi: r => r.status === 'Terisi' || r.status === 'Akan Kosong', semua: () => true }[f];
+  const list = AD.rooms.filter(flt);
+  let h = `<div class="actions" style="margin:0 0 10px"><button class="sm" onclick="copyLink(kosongText())">Salin teks untuk calon penghuni</button><button class="sm sec" onclick="copyLink(kosongBase()+'/?kosong')">Salin link cek kamar</button></div>`;
+  h += `<div class="tabs">${[['bebas', 'Bisa ditawarkan (' + AD.rooms.filter(isBebas).length + ')'], ['dibooking', 'Dibooking'], ['terisi', 'Terisi'], ['semua', 'Semua']].map(x => `<button class="${f === x[0] ? 'on' : ''}" onclick="window.RF='${x[0]}';tKamar()">${x[1]}</button>`).join('')}</div>`;
+  const by = {};
+  list.forEach(r => { const l = r.lokasi || 'Tanpa lokasi'; (by[l] = by[l] || []).push(r); });
+  const names = Object.keys(by);
+  if (!names.length) h += '<div class="card mut">Tidak ada kamar pada filter ini.</div>';
+  names.forEach(l => { h += `<h3 style="margin:14px 4px 8px">${esc(l)} <span class="mut">(${by[l].length})</span></h3>` + by[l].map(roomCard).join(''); });
+  $('#tab').innerHTML = h;
+}
+function roomCard(r) {
+  const id = esc(r.kamar_id);
+  let extra = '';
+  if (r.status === 'Terisi') extra = 'Penghuni: ' + esc(r.penghuni);
+  if (r.status === 'Akan Kosong') extra = esc(r.penghuni) + ' keluar ' + tgl(r.tersedia_mulai);
+  if (r.booking_nama && (r.dibooking || r.booking_kadaluarsa)) extra += (extra ? '<br>' : '') + (r.dibooking ? 'Dibooking: ' : 'Booking kedaluwarsa: ') + esc(r.booking_nama) + (r.booking_sampai ? ' s/d ' + tgl(r.booking_sampai) : '');
+  let act = '';
+  if (r.kosong) act += `<button class="sm" onclick="tenantDlg('${id}')">Isi penghuni</button>`;
+  if (r.status === 'Kosong' || r.status === 'Akan Kosong' || r.status === 'Dibooking') act += `<button class="sm sec" onclick="bookDlg('${id}')">${r.dibooking ? 'Ubah booking' : 'Booking'}</button>`;
+  if (r.dibooking || r.booking_kadaluarsa) act += `<button class="sm sec" onclick="roomGo('${id}','bersihkan')">Batal booking</button>`;
+  if (r.status === 'Kosong') act += `<button class="sm sec" onclick="roomGo('${id}','tidak_tersedia')">Tandai tidak tersedia</button>`;
+  if (r.status === 'Tidak Tersedia') act += `<button class="sm sec" onclick="roomGo('${id}','bersihkan')">Tandai tersedia</button>`;
+  return `<div class="card"><div class="row"><b>Kamar ${esc(r.nama)}</b><span>${roomBadge(r)}</span></div>
+    <div class="mut">${rp(r.harga_sewa)}/bln${r.fasilitas ? ' • ' + esc(r.fasilitas) : ''}${extra ? '<br>' + extra : ''}</div>
+    ${act ? `<div class="actions">${act}</div>` : ''}</div>`;
+}
+function bookDlg(id) {
+  const r = AD.rooms.find(x => x.kamar_id === id); if (!r) return;
+  const d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Booking kamar ${esc(r.nama)}</h3><div class="mut">${esc(r.lokasi)}</div>
+    <label>Nama pemesan</label><input id="bn" value="${esc(r.booking_nama || '')}">
+    <label>No. HP (opsional)</label><input id="bh" inputmode="tel" value="${esc(r.booking_hp || '')}">
+    <label>Booking berlaku sampai (kosongkan = tanpa batas)</label><input id="bs" type="date" value="${esc(r.booking_sampai || plusDays(AD.hari_ini, 7))}">
+    <div class="actions"><button onclick="roomGo('${id}','booking')">Simpan</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  d.showModal();
+}
+async function roomGo(id, mode) {
+  const data = { kamar_id: id, mode };
+  if (mode === 'booking') { data.booking_nama = $('#bn').value; data.booking_hp = $('#bh').value; data.booking_sampai = $('#bs').value; }
+  if (await safe(() => A('setRoom', data))) { if ($('#dlg').open) $('#dlg').close(); toast('Tersimpan'); loadAdmin(); }
+}
+function planDlg(pid) {
+  const t = AD.tenants.find(x => x.penghuni_id === pid); if (!t) return;
+  const d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Rencana keluar</h3><div class="mut">${esc(t.nama)} • ${esc(t.kamar)} ${esc(t.lokasi)}</div>
+    <label>Tanggal keluar (kosongkan untuk membatalkan rencana)</label><input id="pt" type="date" value="${esc(t.tanggal_keluar || '')}">
+    <p class="mut">Kamar otomatis menjadi kosong pada tanggal itu dan muncul sebagai "akan kosong". Tagihan sewa yang jatuh tempo pada/setelah tanggal itu tidak dibuat. Jika tanggal hari ini atau sudah lewat, penghuni langsung dicatat keluar.</p>
+    <div class="actions"><button onclick="planGo('${esc(pid)}')">Simpan</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  d.showModal();
+}
+async function planGo(pid) { if (await safe(() => A('planMoveOut', { penghuni_id: pid, tanggal_keluar: $('#pt').value }))) { $('#dlg').close(); toast('Tersimpan'); loadAdmin(); } }
 
 function tRingkas() {
   const r = AD.ringkasan;
@@ -239,6 +348,7 @@ function tRingkas() {
   const sudah = bayarBulanIni.filter(b => b.sisa <= 0).length;
   $('#tab').innerHTML = `<div class="grid">
     <div class="stat"><span class="mut">Hunian</span><b>${r.kamar_terisi}/${r.kamar_total}</b></div>
+    <div class="stat" onclick="TAB='kamar';drawAdmin()" style="cursor:pointer"><span class="mut">Kamar kosong</span><b>${r.kamar_kosong}</b><span class="mut">${r.kamar_akan_kosong} akan kosong</span></div>
     <div class="stat"><span class="mut">Tunggakan</span><b class="${r.tunggakan_total ? 'neg' : ''}">${rp(r.tunggakan_total)}</b><span class="mut">${r.tunggakan_jumlah} tagihan</span></div>
     <div class="stat"><span class="mut">Lunas bulan ini</span><b>${sudah}/${bayarBulanIni.length}</b></div>
     <div class="stat"><span class="mut">Menunggu konfirmasi</span><b>${r.menunggu_konfirmasi}</b></div>
@@ -296,13 +406,13 @@ function tPenghuni() {
   const base = (AD.frontend_url || location.origin + location.pathname).replace(/\/$/, '');
   let h = '<div class="actions" style="margin-bottom:10px"><button onclick="tenantDlg()">+ Penghuni baru</button></div>';
   h += AD.tenants.map(t => `<div class="card"><div class="row"><b>${esc(t.nama)}</b><span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span></div>
-    <div class="mut">${esc(t.kamar)} • ${esc(t.lokasi)} • masuk ${tgl(t.tanggal_masuk)} • ${rp(t.harga_sewa)}/bln${t.deposit ? ' • deposit ' + rp(t.deposit) : ''}</div>
-    <div class="actions"><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
+    <div class="mut">${esc(t.kamar)} • ${esc(t.lokasi)} • masuk ${tgl(t.tanggal_masuk)} • ${rp(t.harga_sewa)}/bln${t.deposit ? ' • deposit ' + rp(t.deposit) : ''}${t.tanggal_keluar ? '<br><b>Rencana keluar ' + tgl(t.tanggal_keluar) + '</b>' : ''}</div>
+    <div class="actions"><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button><button class="sm sec" onclick="planDlg('${t.penghuni_id}')">Rencana keluar</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
   $('#tab').innerHTML = h;
 }
 function copyLink(u) { navigator.clipboard.writeText(u).then(() => toast('Link disalin'), () => prompt('Salin link:', u)); }
 async function keluar(id, nama) { if (!confirm(nama + ' keluar dari kost? Tagihan yang belum lunas tetap tercatat.')) return; if (await safe(() => A('moveOut', { penghuni_id: id }))) { toast('Tercatat'); loadAdmin(); } }
-function tenantDlg() {
+function tenantDlg(kid) {
   const kosong = AD.rooms.filter(r => r.kosong);
   if (!kosong.length) return toast('Tidak ada kamar kosong. Tambahkan kamar di sheet "Kamar".');
   const d = $('#dlg');
@@ -314,6 +424,8 @@ function tenantDlg() {
     <label>Deposit (Rp, boleh 0)</label><input id="nd" type="number" value="0">
     <div class="ok" id="nprev"></div>
     <div class="actions"><button onclick="tenantGo()">Simpan</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  const rm = kid && kosong.find(x => x.kamar_id === kid);
+  if (rm) { $('#nk').value = kid; $('#nh').value = rm.harga_sewa; if (rm.booking_nama) $('#nn').value = rm.booking_nama; if (rm.booking_hp) $('#np').value = rm.booking_hp; }
   d.showModal(); prev();
 }
 function prev() {
