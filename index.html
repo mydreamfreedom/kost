@@ -113,7 +113,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v5</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v6</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -163,7 +163,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v5</p>';
+  h += '<p class="mut" style="text-align:center">v6</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -419,6 +419,7 @@ function tenantDlg(kid) {
   d.innerHTML = `<h3 style="margin-top:0">Penghuni baru</h3>
     <label>Kamar</label><select id="nk" onchange="$('#nh').value=this.selectedOptions[0].dataset.h">${kosong.map(r => `<option value="${r.kamar_id}" data-h="${r.harga_sewa}">${esc(r.lokasi)} - ${esc(r.nama)} (${rp(r.harga_sewa)})</option>`).join('')}</select>
     <label>Nama</label><input id="nn"><label>No. HP</label><input id="np" inputmode="tel"><label>Email (cadangan notifikasi, opsional)</label><input id="ne" type="email">
+    <label style="display:flex;gap:8px;align-items:center;margin:2px 0 10px;color:var(--ink)"><input type="checkbox" id="nl" style="width:auto;margin:0" onchange="prev()"> Penghuni lama (sudah tinggal, tanpa tagihan awal)</label>
     <label>Tanggal masuk</label><input id="nt" type="date" value="${AD.hari_ini}" oninput="prev()">
     <label>Harga sewa per bulan (hasil kesepakatan)</label><input id="nh" type="number" value="${kosong[0].harga_sewa}" oninput="prev()">
     <label>Deposit (Rp, boleh 0)</label><input id="nd" type="number" value="0">
@@ -430,13 +431,14 @@ function tenantDlg(kid) {
 }
 function prev() {
   const t = $('#nt').value, rent = +$('#nh').value; if (!t) return;
+  if ($('#nl') && $('#nl').checked) { $('#nprev').textContent = 'Penghuni lama: tanpa tagihan awal. Tagihan sewa berikutnya dibuat otomatis menjelang tanggal 1.'; return; }
   const [y, m, dd] = t.split('-').map(Number), dim = new Date(y, m, 0).getDate();
   const hari = dd === 1 ? dim : (dim - dd + (AD.prorata_hari_masuk ? 1 : 0));
   $('#nprev').textContent = 'Tagihan pertama: ' + (dd === 1 ? 'sewa penuh ' : hari + '/' + dim + ' hari ') + '= ' + rp(Math.round(rent * hari / dim)) + '';
 }
 async function tenantGo() {
-  const r = await safe(() => A('addTenant', { kamar_id: $('#nk').value, nama: $('#nn').value, hp: $('#np').value, email: $('#ne').value, tanggal_masuk: $('#nt').value, harga_sewa: $('#nh').value, deposit: $('#nd').value }));
-  if (r) { $('#dlg').close(); toast('Tersimpan. ' + r.keterangan + ' = ' + rp(r.tagihan_pertama)); TAB = 'penghuni'; loadAdmin(); }
+  const r = await safe(() => A('addTenant', { kamar_id: $('#nk').value, nama: $('#nn').value, hp: $('#np').value, email: $('#ne').value, tanggal_masuk: $('#nt').value, harga_sewa: $('#nh').value, deposit: $('#nd').value, lama: $('#nl').checked }));
+  if (r) { $('#dlg').close(); toast('Tersimpan. ' + r.keterangan + (r.tagihan_pertama ? ' = ' + rp(r.tagihan_pertama) : '')); TAB = 'penghuni'; loadAdmin(); }
 }
 
 function tBiaya() {
