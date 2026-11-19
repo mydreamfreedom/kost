@@ -5,8 +5,26 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Dashboard Kost</title>
 <script>
-/* Pilih manifest SEBELUM browser membacanya: ?admin = aplikasi "Kost Admin", selain itu = aplikasi penghuni */
-document.write('<link rel="manifest" href="' + (new URLSearchParams(location.search).get('admin') !== null ? 'manifest-admin.json' : 'manifest.json') + '">');
+/* Pilih manifest SEBELUM browser membacanya:
+   - ?admin  = aplikasi "Kost Admin" (manifest-admin.json)
+   - penghuni (ada link pribadi ?t=TOKEN atau token tersimpan) = manifest dibuat saat itu juga dengan start_url = link pribadi penghuni,
+     supaya aplikasi yang dipasang langsung membuka dashboard penghuni itu sendiri
+   - selain itu = manifest.json (umum) */
+(function () {
+  var q = new URLSearchParams(location.search), base = location.origin + location.pathname.replace(/[^\/]*$/, ''), href = 'manifest.json';
+  if (q.get('admin') !== null) href = 'manifest-admin.json';
+  else if (q.get('kosong') === null && q.get('aturan') === null) {
+    var tk = q.get('t'); try { tk = tk || localStorage.getItem('kost_token'); } catch (e) {}
+    if (tk) {
+      try {
+        var m = { id: base + '?app=penghuni', name: 'Dashboard Kost', short_name: 'Kost', start_url: base + '?t=' + encodeURIComponent(tk), scope: base, display: 'standalone', background_color: '#f4f6f8', theme_color: '#0f766e',
+          icons: [{ src: base + 'icon-192.png', sizes: '192x192', type: 'image/png' }, { src: base + 'icon-512.png', sizes: '512x512', type: 'image/png' }] };
+        href = URL.createObjectURL(new Blob([JSON.stringify(m)], { type: 'application/manifest+json' }));
+      } catch (e) {}
+    }
+  }
+  document.write('<link rel="manifest" href="' + href + '">');
+})();
 </script>
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -127,7 +145,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v15</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v16</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -181,7 +199,7 @@ async function tenantView() {
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
   h += helpCard(d);
-  h += '<p class="mut" style="text-align:center">v15</p>';
+  h += '<p class="mut" style="text-align:center">v16</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
