@@ -126,7 +126,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v13</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v14</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -176,7 +176,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v13</p>';
+  h += '<p class="mut" style="text-align:center">v14</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -210,9 +210,22 @@ async function payGo(id) {
 }
 
 /* ---- Push notification (OneSignal) ---- */
+/* Browser bawaan HP / aplikasi lain (WhatsApp, Instagram, vivo, Xiaomi, dll) sering tidak mendukung push → arahkan ke Chrome */
+function bukanBrowserPush() {
+  const ua = navigator.userAgent;
+  return /Android/i.test(ua) && /; wv\)|FBAN|FBAV|Instagram|Line\/|MiuiBrowser|VivoBrowser|HeyTapBrowser|OppoBrowser|UCBrowser|OPR\/|Opera/i.test(ua);
+}
+function bukaDiChrome() {
+  const u = 'intent://' + location.host + location.pathname + location.search + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' + encodeURIComponent(location.href) + ';end';
+  location.href = u;
+}
 function initPush(d) {
   const box = $('#pushbox');
   if (!CFG.onesignal_app_id) return;
+  if (bukanBrowserPush()) {
+    box.innerHTML = `<div class="warn"><b>🔔 Buka lewat Chrome supaya notifikasi aktif</b><div class="mut" style="margin:4px 0 8px">Browser yang sedang dipakai belum mendukung notifikasi tagihan.</div><button class="big-btn" onclick="bukaDiChrome()">Buka di Chrome</button></div>`;
+    return;
+  }
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
   if (ios && !standalone) {
@@ -234,10 +247,17 @@ function initPush(d) {
         box.innerHTML = '<div class="ok">🔔 Notifikasi tagihan aktif</div>' + instBtn(); bindInst();
         if (!d.push_aktif) { d.push_aktif = true; api('registerPush', { token: TOKEN }).catch(() => {}); }
       } else if (Notification.permission === 'denied') {
-        box.innerHTML = '<div class="warn"><b>Notifikasi diblokir.</b> Aktifkan lewat Pengaturan perangkat → Notifikasi → aplikasi ini, lalu buka ulang.</div>';
+        box.innerHTML = '<div class="warn"><b>🔕 Notifikasi diblokir.</b><ol style="margin:6px 0 0 18px;padding:0"><li>Ketuk ikon <b>gembok</b> (atau <b>⋮</b> → Info) di sebelah alamat situs</li><li>Pilih <b>Izin</b> / <b>Setelan situs</b> → <b>Notifikasi</b></li><li>Ubah ke <b>Izinkan</b>, lalu muat ulang halaman ini</li></ol></div>';
       } else {
         box.innerHTML = '<div class="warn"><b>🔔 Notifikasi belum aktif</b><div class="mut" style="margin:4px 0 8px">Aktifkan agar Anda diingatkan sebelum jatuh tempo.</div><button class="big-btn" id="enBtn">🔔 Aktifkan Pengingat Tagihan</button></div>';
-        $('#enBtn').onclick = async () => { await OS.Notifications.requestPermission(); draw(); };
+        $('#enBtn').onclick = async () => {
+          try {
+            await OS.Notifications.requestPermission();
+            // izin sudah "diizinkan" tetapi status masih Unsubscribed → aktifkan lagi langganannya
+            if (!OS.User.PushSubscription.optedIn && Notification.permission === 'granted') await OS.User.PushSubscription.optIn();
+          } catch (e) {}
+          draw();
+        };
         box.insertAdjacentHTML('beforeend', instBtn()); bindInst();
       }
     };
@@ -268,7 +288,7 @@ async function doLogin() {
 }
 function logout() { localStorage.removeItem('kost_admin'); SES = ''; loginView(); }
 /* Layar proses: semua aksi yang MENULIS data dikunci (modal) sampai selesai, supaya tidak terklik dua kali */
-const WRITES = new Set(['confirmPayment', 'recordCash', 'waiveFine', 'addTenant', 'moveOut', 'addExpense', 'setRoom', 'planMoveOut', 'runDaily']);
+const WRITES = new Set(['confirmPayment', 'recordCash', 'waiveFine', 'addTenant', 'moveOut', 'addExpense', 'setRoom', 'planMoveOut', 'runDaily', 'testPush', 'syncPush']);
 let BUSY = false;
 $('#busy').addEventListener('cancel', e => e.preventDefault());
 function busyOn(txt) { $('#busyTxt').textContent = txt; const b = $('#busy'); if (!b.open) b.showModal(); }
@@ -288,10 +308,11 @@ async function loadAdmin() {
   drawAdmin();
 }
 function drawAdmin() {
-  const tabs = [['ringkas', 'Ringkasan'], ['kamar', 'Kamar'], ['tagihan', 'Tagihan'], ['konfirmasi', 'Konfirmasi' + (AD.pending.length ? ' (' + AD.pending.length + ')' : '')], ['penghuni', 'Penghuni'], ['biaya', 'Pengeluaran'], ['laporan', 'Laporan']];
+  const tabs = [['ringkas', 'Ringkasan'], ['kamar', 'Kamar'], ['tagihan', 'Tagihan'], ['konfirmasi', 'Konfirmasi' + (AD.pending.length ? ' (' + AD.pending.length + ')' : '')], ['penghuni', 'Penghuni'], ['notif', 'Notifikasi' + (belumPush() ? ' (' + belumPush() + ')' : '')], ['biaya', 'Pengeluaran'], ['laporan', 'Laporan']];
   $('#app').innerHTML = '<div class="tabs">' + tabs.map(t => `<button class="${TAB === t[0] ? 'on' : ''}" onclick="TAB='${t[0]}';drawAdmin()">${t[1]}</button>`).join('') + '<button class="sec" onclick="loadAdmin()">⟳</button><button class="sec" onclick="logout()">Keluar</button></div><div id="tab"></div>';
-  ({ ringkas: tRingkas, kamar: tKamar, tagihan: tTagihan, konfirmasi: tKonfirmasi, penghuni: tPenghuni, biaya: tBiaya, laporan: tLaporan })[TAB]();
+  ({ ringkas: tRingkas, kamar: tKamar, tagihan: tTagihan, konfirmasi: tKonfirmasi, penghuni: tPenghuni, notif: tNotif, biaya: tBiaya, laporan: tLaporan })[TAB]();
 }
+const belumPush = () => AD.tenants.filter(t => !t.push_aktif).length;
 
 /* ---- Kamar: ketersediaan, booking, rencana keluar ---- */
 const plusDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
@@ -400,7 +421,7 @@ function tRingkas() {
     <div class="stat"><span class="mut">Tunggakan</span><b class="${r.tunggakan_total ? 'neg' : ''}">${rp(r.tunggakan_total)}</b><span class="mut">${r.tunggakan_jumlah} tagihan</span></div>
     <div class="stat"><span class="mut">Lunas bulan ini</span><b>${sudah}/${bayarBulanIni.length}</b></div>
     <div class="stat"><span class="mut">Menunggu konfirmasi</span><b>${r.menunggu_konfirmasi}</b></div>
-    <div class="stat"><span class="mut">Push belum aktif</span><b>${r.push_belum_aktif}</b></div></div>
+    <div class="stat" onclick="TAB='notif';drawAdmin()" style="cursor:pointer"><span class="mut">Push belum aktif</span><b class="${r.push_belum_aktif ? 'neg' : ''}">${r.push_belum_aktif}</b><span class="mut">ketuk untuk tindak lanjut</span></div></div>
     <div class="actions"><button class="sec sm" onclick="runDaily()">Jalankan pengecekan harian sekarang</button></div>`;
 }
 async function runDaily() { if (await safe(() => A('runDaily'))) { toast('Selesai'); loadAdmin(); } }
@@ -500,6 +521,61 @@ function tPenghuni() {
   h += AD.tenants.map(t => `<div class="card"><div class="row"><b>${esc(t.nama)}</b><span><span class="badge ${t.link_dikirim ? 'b-ok' : 'b-gray'}">${t.link_dikirim ? '✓ link dikirim ' + tgl(t.link_dikirim) : 'link belum dikirim'}</span> <span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span></span></div>
     <div class="mut">${esc(t.kamar)} • ${esc(t.lokasi)} • masuk ${tgl(t.tanggal_masuk)} • ${rp(t.harga_sewa)}/bln${t.deposit ? ' • deposit ' + rp(t.deposit) : ''}${t.tanggal_keluar ? '<br><b>Rencana keluar ' + tgl(t.tanggal_keluar) + '</b>' : ''}</div>
     <div class="actions"><button class="sm" style="background:#25d366" onclick="kirimLink('${t.penghuni_id}')">${t.link_dikirim ? 'Kirim ulang via WA' : 'Kirim link via WA'}</button><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button><button class="sm sec" onclick="planDlg('${t.penghuni_id}')">Rencana keluar</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
+  $('#tab').innerHTML = h;
+}
+/* ---- Notifikasi: jangkauan push, tes kirim, dan cadangan lewat WhatsApp ---- */
+const PESAN_PANDUAN_PUSH = `Halo {nama} 👋
+Supaya kamu dapat pengingat tagihan kost otomatis di HP, yuk aktifkan notifikasinya (cuma 1 menit):
+
+1. Buka link ini lewat *Chrome*:
+{link}
+2. Ketuk tombol "Aktifkan Pengingat Tagihan", lalu pilih "Izinkan".
+3. Kalau muncul tulisan "Notifikasi diblokir": ketuk ikon gembok di sebelah alamat → Izin → Notifikasi → Izinkan, lalu muat ulang halaman.
+(iPhone: buka lewat Safari > Bagikan > Tambah ke Layar Utama, lalu buka dari ikon di layar utama dan aktifkan notifikasi)
+
+Terima kasih 🙏`;
+function tenantBills(t) { return AD.bills.filter(b => b.sisa > 0 && (b.penghuni_id ? b.penghuni_id === t.penghuni_id : (b.nama === t.nama && b.kamar === t.kamar))); }
+function pesanPengingat(t) {
+  const open = tenantBills(t), link = linkOf(t), usaha = AD.nama_usaha || 'Kost';
+  if (!open.length) return `Halo ${t.nama} 👋\nIni dari ${usaha}. Tagihan kamu saat ini sudah lunas, terima kasih 🙌\nDashboard pribadi kamu: ${link}`;
+  const total = open.reduce((s, b) => s + b.sisa, 0);
+  const baris = open.map(b => '• ' + (b.jenis === 'Deposit' ? 'Deposit' : b.jenis + ' ' + periodeLabel(b.periode)) + ': ' + rp(b.sisa) + (b.denda > 0 ? ' (termasuk denda ' + rp(b.denda) + ')' : '') + ', jatuh tempo ' + tgl(b.jatuh_tempo)).join('\n');
+  return `Halo ${t.nama} 👋\nPengingat tagihan kost ${usaha} (Kamar ${t.kamar}, ${t.lokasi}):\n${baris}\nTotal: ${rp(total)}\n\nCek rincian dan konfirmasi pembayaran di dashboard kamu:\n${link}\nTerima kasih 🙏`;
+}
+function kirimWA(pid, jenis) {
+  const t = AD.tenants.find(x => x.penghuni_id === pid); if (!t) return;
+  const hp = waNum(t.hp); if (!hp) return toast('No. HP ' + t.nama + ' belum diisi di sheet Penghuni');
+  const pesan = jenis === 'panduan' ? PESAN_PANDUAN_PUSH.replace('{nama}', t.nama).replace('{link}', linkOf(t)) : pesanPengingat(t);
+  bukaWA(hp, pesan);
+}
+function hasilTes(t, r) {
+  const d = $('#dlg');
+  d.innerHTML = (r.terkirim
+    ? `<h3 style="margin-top:0">✅ Tes terkirim</h3><p>Notifikasi dikirim ke HP <b>${esc(t.nama)}</b>. Pastikan muncul di layarnya. Kalau tidak muncul, kirim panduan aktivasi lewat WhatsApp.</p>`
+    : `<h3 style="margin-top:0">❌ Belum bisa terkirim</h3><p>${esc(r.pesan || 'Tidak ada perangkat aktif untuk penghuni ini.')}</p><p class="mut">Kirim panduan aktivasi lewat WhatsApp, atau bantu aktifkan langsung di HP penghuni.</p>`)
+    + '<div class="actions"><button class="sec" onclick="$(\'#dlg\').close()">Tutup</button></div>';
+  d.showModal();
+}
+async function tesPush(pid) {
+  const t = AD.tenants.find(x => x.penghuni_id === pid); if (!t) return;
+  const r = await safe(() => A('testPush', { penghuni_id: pid }));
+  if (r) hasilTes(t, r);
+}
+async function syncPush() {
+  const r = await safe(() => A('syncPush'));
+  if (r) { toast('Status disinkronkan dari OneSignal' + (r.berubah ? ' (' + r.berubah + ' berubah)' : '')); loadAdmin(); }
+}
+function tNotif() {
+  const fitur = !!AD.push_fitur; // true jika backend (Code.gs v18+) mendukung tes & sinkron
+  const aktif = AD.tenants.filter(t => t.push_aktif), belum = AD.tenants.filter(t => !t.push_aktif);
+  const kartu = t => { const nb = tenantBills(t).length; return `<div class="card"><div class="row"><b>${esc(t.nama)} <span class="mut">• ${esc(t.kamar)} ${esc(t.lokasi)}</span></b><span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span></div>
+    <div class="mut">${t.link_dikirim ? 'Link dikirim ' + tgl(t.link_dikirim) : 'Link belum dikirim'}${nb ? ' • ' + nb + ' tagihan belum lunas' : ''}</div>
+    <div class="actions">${fitur ? `<button class="sm" onclick="tesPush('${t.penghuni_id}')">Tes notifikasi</button>` : ''}<button class="sm" style="background:#25d366" onclick="kirimWA('${t.penghuni_id}','ingat')">Pengingat via WA</button>${t.push_aktif ? '' : `<button class="sm sec" onclick="kirimWA('${t.penghuni_id}','panduan')">Panduan aktivasi via WA</button>`}</div></div>`; };
+  let h = `<div class="grid"><div class="stat"><span class="mut">Terjangkau push</span><b>${aktif.length}/${AD.tenants.length}</b></div><div class="stat"><span class="mut">Belum terjangkau</span><b class="${belum.length ? 'neg' : ''}">${belum.length}</b></div></div>`;
+  h += fitur ? '<div class="actions" style="margin:10px 0"><button class="sm sec" onclick="syncPush()">Cek status dari OneSignal</button></div>' : '<div class="warn mut" style="margin-top:10px">Tombol tes notifikasi dan sinkron status akan aktif setelah Code.gs v18 dipasang. Pengingat lewat WhatsApp sudah bisa dipakai sekarang.</div>';
+  h += '<div class="ok mut" style="margin-top:10px">Paling pasti: aktifkan notifikasi bersama penghuni saat serah kunci, lalu tekan "Tes notifikasi" sampai muncul di HP-nya.</div>';
+  h += `<h3 style="margin:14px 4px 8px">Belum terjangkau (${belum.length})</h3>` + (belum.map(kartu).join('') || '<div class="card mut">Semua penghuni sudah terjangkau 🎉</div>');
+  if (aktif.length) h += `<h3 style="margin:14px 4px 8px">Sudah aktif (${aktif.length})</h3>` + aktif.map(kartu).join('');
   $('#tab').innerHTML = h;
 }
 function copyLink(u) { navigator.clipboard.writeText(u).then(() => toast('Link disalin'), () => prompt('Salin link:', u)); }
