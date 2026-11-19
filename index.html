@@ -26,7 +26,7 @@ main{max-width:860px;margin:0 auto;padding:12px}
 .badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
 .b-ok{background:#dcfce7;color:var(--ok)}.b-warn{background:#fef3c7;color:var(--warn)}.b-bad{background:#fee2e2;color:var(--bad)}.b-gray{background:#e5e7eb;color:#374151}.b-blue{background:#dbeafe;color:#1d4ed8}
 button,.btn{background:var(--pri);color:#fff;border:0;border-radius:9px;padding:9px 14px;font:inherit;font-weight:600;cursor:pointer}
-button.sec{background:#e5e7eb;color:#111}button.bad{background:var(--bad)}button.sm{padding:6px 10px;font-size:13px}
+button.sec,.btn.sec{background:#e5e7eb;color:#111}button.bad{background:var(--bad)}button.sm{padding:6px 10px;font-size:13px}
 button.big-btn{width:100%;padding:13px;font-size:16px}
 input,select,textarea{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:9px;font:inherit;background:#fff;margin:4px 0 10px}
 label{font-size:13px;color:var(--mut)}
@@ -43,6 +43,7 @@ dialog{border:0;border-radius:14px;padding:16px;width:min(440px,94vw)}dialog::ba
 .ok{background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:10px 12px;margin-bottom:12px}
 .actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .neg{color:var(--bad)}.right{text-align:right}
+@media print{header,.noprint,#toast{display:none!important}body{background:#fff;font-size:12pt}.card{border:0!important;padding:0!important}main{max-width:none}}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:99;max-width:90vw}
 </style>
 </head>
@@ -126,7 +127,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v14</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v15</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -138,6 +139,7 @@ let CFG = null;
 
 async function start() {
   if (new URLSearchParams(location.search).get('kosong') !== null) return publicView();
+  if (new URLSearchParams(location.search).get('aturan') !== null) return aturanView();
   try { CFG = await api('config'); $('#hTitle').textContent = CFG.nama_usaha || 'Dashboard Kost'; } catch (e) { $('#app').innerHTML = '<div class="card neg">' + esc(e.message) + '</div>'; return; }
   const p = new URLSearchParams(location.search);
   if (p.get('admin') !== null) return adminView();
@@ -155,6 +157,8 @@ async function tenantView() {
   catch (e) { localStorage.removeItem('kost_token'); $('#app').innerHTML = '<div class="card neg">' + esc(e.message) + '</div>'; return; }
   history.replaceState(null, '', '?t=' + encodeURIComponent(TOKEN)); // agar "Add to Home Screen" menyimpan link pribadi
   $('#hSub').textContent = d.nama + ' • Kamar ' + d.kamar + (d.lokasi ? ' • ' + d.lokasi : '');
+  window.TD = d;
+  if (d.aturan && d.aturan.perlu_setuju) return consentView(d); // wajib setuju tata tertib dulu (backend v19+)
   const open = d.bills.filter(b => b.sisa > 0);
   const totalSisa = open.reduce((s, b) => s + b.sisa, 0);
   let h = '<div id="pushbox"></div>';
@@ -176,7 +180,8 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v14</p>';
+  h += helpCard(d);
+  h += '<p class="mut" style="text-align:center">v15</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -191,10 +196,10 @@ function payDlg(id, sisa) {
     <p class="mut">Pembayaran akan dicek dan dikonfirmasi oleh pengelola.</p>`;
   d.showModal();
 }
-function compress(file) {
+function compress(file, maxPx, q) {
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
-    img.onload = () => { const max = 1100, k = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = img.width * k; c.height = img.height * k; c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .72).split(',')[1]); URL.revokeObjectURL(url); };
+    img.onload = () => { const max = maxPx || 1100, k =Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = img.width * k; c.height = img.height * k; c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', q || .72).split(',')[1]); URL.revokeObjectURL(url); };
     img.onerror = () => rej(new Error('Foto tidak bisa dibaca')); img.src = url;
   });
 }
@@ -207,6 +212,104 @@ async function payGo(id) {
   });
   btn.disabled = false; btn.textContent = 'Kirim';
   if (r) { $('#dlg').close(); toast('Terkirim, menunggu konfirmasi pengelola'); tenantView(); }
+}
+
+/* ---- Tata tertib, persetujuan digital, keluhan ---- */
+function renderAturan(teks) {
+  let h = '', n = 0;
+  String(teks || '').split('\n').forEach(raw => {
+    const l = raw.trim(); if (!l) return;
+    if (n === 0) { h += `<h3 style="text-align:center;margin:0 0 4px">${esc(l)}</h3>`; n++; return; }
+    if (n === 1 && !l.startsWith('# ') && !/^\d+\./.test(l) && l.length < 60) { h += `<div class="mut" style="text-align:center;margin-bottom:10px">${esc(l)}</div>`; n++; return; }
+    n++;
+    if (l.startsWith('# ')) { h += `<h4 style="margin:16px 0 6px;color:var(--pri)">${esc(l.slice(2))}</h4>`; return; }
+    const m = /^(\d+)\.\s+(.*)$/.exec(l);
+    if (m) { h += `<div style="display:flex;gap:8px;margin:6px 0"><b style="min-width:26px">${m[1]}.</b><span>${esc(m[2])}</span></div>`; return; }
+    h += `<p style="margin:8px 0">${esc(l)}</p>`;
+  });
+  return h;
+}
+function sigPad(cv) {
+  const g = cv.getContext('2d'); let on = false, last = null, ink = 0;
+  const fit = () => {
+    const r = cv.getBoundingClientRect(), k = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    cv.width = Math.round((r.width || 300) * k); cv.height = Math.round((r.height || 170) * k);
+    g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+    g.lineWidth = 2.5 * k; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#111'; ink = 0;
+  };
+  const pos = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / (r.width || 1), y: (e.clientY - r.top) * cv.height / (r.height || 1) }; };
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (x) {} on = true; last = pos(e); g.beginPath(); g.moveTo(last.x, last.y); g.lineTo(last.x + .1, last.y + .1); g.stroke(); });
+  cv.addEventListener('pointermove', e => { if (!on) return; e.preventDefault(); const p = pos(e); g.beginPath(); g.moveTo(last.x, last.y); g.lineTo(p.x, p.y); g.stroke(); ink += Math.hypot(p.x - last.x, p.y - last.y); last = p; });
+  const up = () => { on = false; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  fit();
+  return { clear: fit, kosong: () => ink < 60 * (cv.width / (cv.getBoundingClientRect().width || cv.width)), data: () => cv.toDataURL('image/png').split(',')[1] };
+}
+function consentView(d) {
+  const a = d.aturan;
+  $('#app').innerHTML = `<div class="card">${renderAturan(a.teks)}</div>
+    <div class="card"><h3 style="margin-top:0">Persetujuan digital</h3>
+    <div class="mut" style="margin-bottom:8px">Nama: <b>${esc(d.nama)}</b> • Kamar ${esc(d.kamar)}${d.lokasi ? ' • ' + esc(d.lokasi) : ''}</div>
+    ${a.ada_ktp ? '<div class="ok">✅ Foto KTP Anda sudah tersimpan.</div>' : '<label>Foto KTP (wajib, pastikan tulisannya terbaca jelas)</label><input id="ckt" type="file" accept="image/*">'}
+    <label>Tanda tangan (goreskan dengan jari di kotak ini)</label>
+    <canvas id="csig" style="width:100%;height:170px;border:1px dashed #94a3b8;border-radius:10px;background:#fff;touch-action:none;display:block"></canvas>
+    <div class="actions" style="margin:6px 0 10px"><button class="sm sec" id="cclr" type="button">Hapus tanda tangan</button></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input type="checkbox" id="cok" style="width:auto;margin:3px 0 0"><span>Saya, <b>${esc(d.nama)}</b>, telah membaca, memahami, dan menyetujui seluruh tata tertib di atas.</span></label>
+    <button class="big-btn" id="cgo" style="margin-top:12px">Setujui dan kirim</button>
+    <p class="mut">Persetujuan dicatat lengkap dengan nama, tanggal, jam, dan versi tata tertib.</p></div>`;
+  const pad = sigPad($('#csig'));
+  $('#cclr').onclick = () => pad.clear();
+  $('#cgo').onclick = async () => {
+    const f = $('#ckt') && $('#ckt').files[0];
+    if (!a.ada_ktp && !f) return toast('Unggah foto KTP terlebih dahulu');
+    if (pad.kosong()) return toast('Tanda tangan belum diisi');
+    if (!$('#cok').checked) return toast('Centang pernyataan persetujuan terlebih dahulu');
+    const b = $('#cgo'); b.disabled = true; b.textContent = 'Mengirim… mohon tunggu';
+    const r = await safe(async () => api('submitConsent', { token: TOKEN, versi: a.versi, setuju: true, ttd: { data: pad.data() }, ktp: f ? { data: await compress(f, 1400, .8) } : undefined, perangkat: navigator.userAgent.slice(0, 150) }));
+    b.disabled = false; b.textContent = 'Setujui dan kirim';
+    if (r) { toast('Terima kasih, persetujuan tersimpan'); tenantView(); }
+  };
+}
+function aturanDlg() {
+  const d = $('#dlg');
+  d.innerHTML = '<div style="max-height:70vh;overflow:auto">' + renderAturan(window.TD.aturan.teks) + '</div><div class="actions"><button class="sec" onclick="$(\'#dlg\').close()">Tutup</button></div>';
+  d.showModal();
+}
+const STATUS_BADGE = { Baru: 'b-gray', Diproses: 'b-warn', Selesai: 'b-ok' };
+function helpCard(d) {
+  if (!d.aturan) return ''; // backend lama (sebelum v19)
+  let h = '<h3 style="margin:16px 4px 8px">Bantuan &amp; Keluhan</h3><div class="card"><div class="mut">Ada kerusakan, gangguan, saran, atau hal yang perlu kami ketahui? Sampaikan di sini.</div><div class="actions"><button onclick="complaintDlg()">✍️ Kirim laporan / saran</button><button class="sec" onclick="aturanDlg()">📜 Lihat tata tertib</button></div></div>';
+  (d.keluhan || []).forEach(k => {
+    h += `<div class="card"><div class="row"><b>${esc(k.kategori)}</b><span class="badge ${STATUS_BADGE[k.status] || 'b-gray'}">${esc(k.status)}</span></div><div class="mut">${esc(k.waktu)}</div>
+      <div style="margin-top:4px;white-space:pre-line">${esc(k.pesan)}</div>${k.balasan ? `<div class="ok" style="margin:8px 0 0"><b>Balasan pengelola:</b><br>${esc(k.balasan)}</div>` : ''}</div>`;
+  });
+  return h;
+}
+function complaintDlg() {
+  const d = $('#dlg'), kat = (window.TD && window.TD.kategori_keluhan) || [];
+  d.innerHTML = `<h3 style="margin-top:0">Kirim laporan / saran</h3>
+    <label>Kategori</label><select id="kk">${kat.map(k => `<option>${esc(k)}</option>`).join('')}</select>
+    <label>Isi laporan</label><textarea id="kp" rows="4" maxlength="1000" placeholder="Jelaskan dengan singkat dan jelas"></textarea>
+    <label>Foto (opsional)</label><input id="kf" type="file" accept="image/*">
+    <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input type="checkbox" id="kr" style="width:auto;margin:3px 0 0"><span>Rahasiakan identitas saya. Pengelola tidak akan menyebut nama saya kepada pihak yang dilaporkan.</span></label>
+    <div class="actions"><button id="kbtn" onclick="complaintGo()">Kirim</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  d.showModal();
+}
+async function complaintGo() {
+  const b = $('#kbtn'); b.disabled = true; b.textContent = 'Mengirim…';
+  const r = await safe(async () => { const f = $('#kf').files[0]; return api('submitComplaint', { token: TOKEN, kategori: $('#kk').value, pesan: $('#kp').value, rahasia: $('#kr').checked, foto: f ? { data: await compress(f) } : null }); });
+  b.disabled = false; b.textContent = 'Kirim';
+  if (r) { $('#dlg').close(); toast('Terkirim. Terima kasih atas laporan Anda'); tenantView(); }
+}
+/* Halaman publik ?aturan: naskah tata tertib untuk dibaca / dicetak calon penghuni */
+async function aturanView() {
+  $('#hSub').textContent = 'Tata tertib';
+  let d; try { d = await api('aturan'); } catch (e) { $('#app').innerHTML = '<div class="card neg">' + esc(e.message) + '</div>'; return; }
+  $('#hTitle').textContent = d.nama_usaha || 'Kost';
+  document.title = 'Tata tertib • ' + (d.nama_usaha || 'Kost');
+  $('#app').innerHTML = `<div class="card" style="padding:18px">${renderAturan(d.teks)}</div>
+    <div class="card noprint"><div class="mut">Persetujuan dilakukan secara digital di dashboard penghuni (foto KTP dan tanda tangan di layar) saat pertama kali membuka link pribadi Anda.</div><div class="actions"><button onclick="window.print()">🖨️ Cetak / simpan PDF</button></div></div>
+    <p class="mut noprint" style="text-align:center">Versi ${esc(d.versi)}</p>`;
 }
 
 /* ---- Push notification (OneSignal) ---- */
@@ -288,7 +391,7 @@ async function doLogin() {
 }
 function logout() { localStorage.removeItem('kost_admin'); SES = ''; loginView(); }
 /* Layar proses: semua aksi yang MENULIS data dikunci (modal) sampai selesai, supaya tidak terklik dua kali */
-const WRITES = new Set(['confirmPayment', 'recordCash', 'waiveFine', 'addTenant', 'moveOut', 'addExpense', 'setRoom', 'planMoveOut', 'runDaily', 'testPush', 'syncPush']);
+const WRITES = new Set(['confirmPayment', 'recordCash', 'waiveFine', 'addTenant', 'moveOut', 'addExpense', 'setRoom', 'planMoveOut', 'runDaily', 'testPush', 'syncPush', 'updateKeluhan']);
 let BUSY = false;
 $('#busy').addEventListener('cancel', e => e.preventDefault());
 function busyOn(txt) { $('#busyTxt').textContent = txt; const b = $('#busy'); if (!b.open) b.showModal(); }
@@ -308,11 +411,43 @@ async function loadAdmin() {
   drawAdmin();
 }
 function drawAdmin() {
-  const tabs = [['ringkas', 'Ringkasan'], ['kamar', 'Kamar'], ['tagihan', 'Tagihan'], ['konfirmasi', 'Konfirmasi' + (AD.pending.length ? ' (' + AD.pending.length + ')' : '')], ['penghuni', 'Penghuni'], ['notif', 'Notifikasi' + (belumPush() ? ' (' + belumPush() + ')' : '')], ['biaya', 'Pengeluaran'], ['laporan', 'Laporan']];
+  const tabs = [['ringkas', 'Ringkasan'], ['kamar', 'Kamar'], ['tagihan', 'Tagihan'], ['konfirmasi', 'Konfirmasi' + (AD.pending.length ? ' (' + AD.pending.length + ')' : '')], ['penghuni', 'Penghuni'], ['notif', 'Notifikasi' + (belumPush() ? ' (' + belumPush() + ')' : '')], ['keluhan', 'Keluhan' + (keluhanBaru() ? ' (' + keluhanBaru() + ')' : '')], ['biaya', 'Pengeluaran'], ['laporan', 'Laporan']];
   $('#app').innerHTML = '<div class="tabs">' + tabs.map(t => `<button class="${TAB === t[0] ? 'on' : ''}" onclick="TAB='${t[0]}';drawAdmin()">${t[1]}</button>`).join('') + '<button class="sec" onclick="loadAdmin()">⟳</button><button class="sec" onclick="logout()">Keluar</button></div><div id="tab"></div>';
-  ({ ringkas: tRingkas, kamar: tKamar, tagihan: tTagihan, konfirmasi: tKonfirmasi, penghuni: tPenghuni, notif: tNotif, biaya: tBiaya, laporan: tLaporan })[TAB]();
+  ({ ringkas: tRingkas, kamar: tKamar, tagihan: tTagihan, konfirmasi: tKonfirmasi, penghuni: tPenghuni, notif: tNotif, keluhan: tKeluhan, biaya: tBiaya, laporan: tLaporan })[TAB]();
 }
 const belumPush = () => AD.tenants.filter(t => !t.push_aktif).length;
+const keluhanBaru = () => (AD.keluhan || []).filter(k => k.status === 'Baru').length;
+
+/* ---- Keluhan & saran dari penghuni ---- */
+function tKeluhan() {
+  const all = AD.keluhan || [], f = window.KF || 'baru';
+  const flt = { baru: k => k.status === 'Baru', proses: k => k.status === 'Diproses', selesai: k => k.status === 'Selesai', semua: () => true }[f];
+  const cnt = s => all.filter(k => k.status === s).length;
+  const A_ST = 'text-decoration:none;font-size:13px;padding:6px 10px';
+  let h = `<div class="tabs">${[['baru', 'Baru (' + cnt('Baru') + ')'], ['proses', 'Diproses (' + cnt('Diproses') + ')'], ['selesai', 'Selesai'], ['semua', 'Semua']].map(x => `<button class="${f === x[0] ? 'on' : ''}" onclick="window.KF='${x[0]}';tKeluhan()">${x[1]}</button>`).join('')}</div>`;
+  if (!AD.fitur_aturan) h += '<div class="warn mut">Fitur keluhan aktif setelah Code.gs v19 dipasang.</div>';
+  const list = all.filter(flt);
+  if (AD.fitur_aturan && !list.length) h += '<div class="card mut">Tidak ada laporan pada filter ini.</div>';
+  list.forEach(k => {
+    h += `<div class="card"><div class="row"><b>${esc(k.nama)} <span class="mut">• ${esc(k.kamar)} ${esc(k.lokasi)}</span></b><span class="badge ${STATUS_BADGE[k.status] || 'b-gray'}">${esc(k.status)}</span></div>
+      <div style="margin:4px 0"><span class="badge ${k.kategori === 'Keamanan' ? 'b-bad' : 'b-blue'}">${esc(k.kategori)}</span> ${k.rahasia ? '<span class="badge b-warn">🔒 rahasiakan pelapor</span>' : ''} <span class="mut">${esc(k.waktu)}</span></div>
+      <div style="white-space:pre-line">${esc(k.pesan)}</div>
+      ${k.rahasia ? '<div class="mut" style="margin-top:4px">Pelapor meminta namanya tidak disebut kepada pihak yang dilaporkan.</div>' : ''}
+      ${k.balasan ? `<div class="ok" style="margin:8px 0 0"><b>Balasan:</b><br>${esc(k.balasan)}</div>` : ''}
+      <div class="actions"><button class="sm" onclick="keluhanDlg('${esc(k.keluhan_id)}')">Balas / ubah status</button>${k.foto_url ? `<a class="btn sm sec" style="${A_ST};color:#111" target="_blank" rel="noopener" href="${esc(k.foto_url)}">Lihat foto</a>` : ''}${waNum(k.hp) ? `<a class="btn sm" style="${A_ST};background:#25d366" target="_blank" rel="noopener" href="https://wa.me/${waNum(k.hp)}">WA</a>` : ''}</div></div>`;
+  });
+  $('#tab').innerHTML = h;
+}
+function keluhanDlg(id) {
+  const k = (AD.keluhan || []).find(x => x.keluhan_id === id); if (!k) return;
+  const d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Tanggapi laporan</h3><div class="mut">${esc(k.nama)} • ${esc(k.kategori)}</div>
+    <label>Status</label><select id="us">${['Baru', 'Diproses', 'Selesai'].map(s => `<option ${s === k.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
+    <label>Balasan untuk penghuni (opsional; penghuni diberi notifikasi)</label><textarea id="ub" rows="3" maxlength="600">${esc(k.balasan)}</textarea>
+    <div class="actions"><button onclick="keluhanGo('${esc(id)}')">Simpan</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  d.showModal();
+}
+async function keluhanGo(id) { if (await safe(() => A('updateKeluhan', { keluhan_id: id, status: $('#us').value, balasan: $('#ub').value }))) { $('#dlg').close(); toast('Tersimpan'); loadAdmin(); } }
 
 /* ---- Kamar: ketersediaan, booking, rencana keluar ---- */
 const plusDays = (s, n) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
@@ -339,7 +474,7 @@ function tKamar() {
   const f = window.RF || 'bebas';
   const flt = { bebas: isBebas, dibooking: r => r.dibooking, terisi: r => r.status === 'Terisi' || r.status === 'Akan Kosong', semua: () => true }[f];
   const list = AD.rooms.filter(flt);
-  let h = `<div class="actions" style="margin:0 0 10px"><button class="sm" onclick="copyLink(kosongText())">Salin teks untuk calon penghuni</button><button class="sm sec" onclick="copyLink(kosongBase()+'/?kosong')">Salin link cek kamar</button></div>`;
+  let h = `<div class="actions" style="margin:0 0 10px"><button class="sm" onclick="copyLink(kosongText())">Salin teks untuk calon penghuni</button><button class="sm sec" onclick="copyLink(kosongBase()+'/?kosong')">Salin link cek kamar</button><button class="sm sec" onclick="copyLink(kosongBase()+'/?aturan')">Salin link tata tertib</button></div>`;
   h += `<div class="tabs">${[['bebas', 'Bisa ditawarkan (' + AD.rooms.filter(isBebas).length + ')'], ['dibooking', 'Dibooking'], ['terisi', 'Terisi'], ['semua', 'Semua']].map(x => `<button class="${f === x[0] ? 'on' : ''}" onclick="window.RF='${x[0]}';tKamar()">${x[1]}</button>`).join('')}</div>`;
   const by = {};
   list.forEach(r => { const l = r.lokasi || 'Tanpa lokasi'; (by[l] = by[l] || []).push(r); });
@@ -421,7 +556,9 @@ function tRingkas() {
     <div class="stat"><span class="mut">Tunggakan</span><b class="${r.tunggakan_total ? 'neg' : ''}">${rp(r.tunggakan_total)}</b><span class="mut">${r.tunggakan_jumlah} tagihan</span></div>
     <div class="stat"><span class="mut">Lunas bulan ini</span><b>${sudah}/${bayarBulanIni.length}</b></div>
     <div class="stat"><span class="mut">Menunggu konfirmasi</span><b>${r.menunggu_konfirmasi}</b></div>
-    <div class="stat" onclick="TAB='notif';drawAdmin()" style="cursor:pointer"><span class="mut">Push belum aktif</span><b class="${r.push_belum_aktif ? 'neg' : ''}">${r.push_belum_aktif}</b><span class="mut">ketuk untuk tindak lanjut</span></div></div>
+    <div class="stat" onclick="TAB='notif';drawAdmin()" style="cursor:pointer"><span class="mut">Push belum aktif</span><b class="${r.push_belum_aktif ? 'neg' : ''}">${r.push_belum_aktif}</b><span class="mut">ketuk untuk tindak lanjut</span></div>
+    ${AD.fitur_aturan ? `<div class="stat" onclick="TAB='keluhan';drawAdmin()" style="cursor:pointer"><span class="mut">Keluhan baru</span><b class="${r.keluhan_baru ? 'neg' : ''}">${r.keluhan_baru || 0}</b></div>
+    <div class="stat" onclick="TAB='penghuni';drawAdmin()" style="cursor:pointer"><span class="mut">Belum setuju tata tertib</span><b class="${r.belum_setuju ? 'neg' : ''}">${r.belum_setuju || 0}</b></div>` : ''}</div>
     <div class="actions"><button class="sec sm" onclick="runDaily()">Jalankan pengecekan harian sekarang</button></div>`;
 }
 async function runDaily() { if (await safe(() => A('runDaily'))) { toast('Selesai'); loadAdmin(); } }
@@ -518,9 +655,9 @@ function tPenghuni() {
   const base = kosongBase();
   const belum = AD.tenants.filter(t => !t.link_dikirim).length;
   let h = `<div class="actions" style="margin-bottom:10px"><button onclick="tenantDlg()">+ Penghuni baru</button>${belum ? `<button style="background:#25d366" onclick="kirimBerikutnya()">Kirim link berikutnya via WA (${belum} belum)</button>` : '<span class="mut">✅ Semua link sudah dikirim</span>'}</div>`;
-  h += AD.tenants.map(t => `<div class="card"><div class="row"><b>${esc(t.nama)}</b><span><span class="badge ${t.link_dikirim ? 'b-ok' : 'b-gray'}">${t.link_dikirim ? '✓ link dikirim ' + tgl(t.link_dikirim) : 'link belum dikirim'}</span> <span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span></span></div>
+  h += AD.tenants.map(t => `<div class="card"><div class="row"><b>${esc(t.nama)}</b><span><span class="badge ${t.link_dikirim ? 'b-ok' : 'b-gray'}">${t.link_dikirim ? '✓ link dikirim ' + tgl(t.link_dikirim) : 'link belum dikirim'}</span> <span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span>${AD.fitur_aturan ? ` <span class="badge ${t.setuju_ok ? 'b-ok' : 'b-warn'}">${t.setuju_ok ? '✓ setuju tata tertib' : 'belum setuju'}</span>` : ''}</span></div>
     <div class="mut">${esc(t.kamar)} • ${esc(t.lokasi)} • masuk ${tgl(t.tanggal_masuk)} • ${rp(t.harga_sewa)}/bln${t.deposit ? ' • deposit ' + rp(t.deposit) : ''}${t.tanggal_keluar ? '<br><b>Rencana keluar ' + tgl(t.tanggal_keluar) + '</b>' : ''}</div>
-    <div class="actions"><button class="sm" style="background:#25d366" onclick="kirimLink('${t.penghuni_id}')">${t.link_dikirim ? 'Kirim ulang via WA' : 'Kirim link via WA'}</button><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button><button class="sm sec" onclick="planDlg('${t.penghuni_id}')">Rencana keluar</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
+    <div class="actions"><button class="sm" style="background:#25d366" onclick="kirimLink('${t.penghuni_id}')">${t.link_dikirim ? 'Kirim ulang via WA' : 'Kirim link via WA'}</button><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button>${t.dok_url ? `<a class="btn sm sec" style="text-decoration:none;font-size:13px;padding:6px 10px;color:#111" target="_blank" rel="noopener" href="${esc(t.dok_url)}">Dokumen perjanjian</a>` : ''}${t.ktp_url ? `<a class="btn sm sec" style="text-decoration:none;font-size:13px;padding:6px 10px;color:#111" target="_blank" rel="noopener" href="${esc(t.ktp_url)}">KTP</a>` : ''}<button class="sm sec" onclick="planDlg('${t.penghuni_id}')">Rencana keluar</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
   $('#tab').innerHTML = h;
 }
 /* ---- Notifikasi: jangkauan push, tes kirim, dan cadangan lewat WhatsApp ---- */
