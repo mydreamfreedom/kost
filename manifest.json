@@ -1,7 +1,8 @@
 {
-  "name": "Dashboard Kost",
-  "short_name": "Kost",
-  "start_url": "./",
+  "id": "./?admin",
+  "name": "Kost Admin",
+  "short_name": "Kost Admin",
+  "start_url": "./?admin",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f4f6f8",
