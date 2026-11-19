@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Dashboard Kost</title>
-<link rel="manifest" href="manifest.json">
+<script>
+/* Pilih manifest SEBELUM browser membacanya: ?admin = aplikasi "Kost Admin", selain itu = aplikasi penghuni */
+document.write('<link rel="manifest" href="' + (new URLSearchParams(location.search).get('admin') !== null ? 'manifest-admin.json' : 'manifest.json') + '">');
+</script>
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -57,7 +60,6 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwYS3ZuMqTO6gn8HSd1bGhx
 
 /* Panel admin dipasang sebagai aplikasi tersendiri ("Kost Admin") yang langsung membuka panel pengelola */
 if (new URLSearchParams(location.search).get('admin') !== null) {
-  const mf = document.querySelector('link[rel="manifest"]'); if (mf) mf.href = 'manifest-admin.json';
   document.title = 'Kost Admin';
   const at = document.createElement('meta'); at.name = 'apple-mobile-web-app-title'; at.content = 'Kost Admin'; document.head.appendChild(at);
 }
@@ -123,7 +125,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v11</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v12</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -173,7 +175,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v11</p>';
+  h += '<p class="mut" style="text-align:center">v12</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
