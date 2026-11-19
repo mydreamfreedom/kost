@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pasang Kost Admin</title>
+<link rel="manifest" href="manifest-admin.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#0f766e">
+<style>
+body{font-family:system-ui,sans-serif;background:#f4f6f8;color:#1f2937;margin:0;padding:16px;max-width:520px;margin:auto}
+h1{font-size:20px} .c{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin:12px 0}
+button{width:100%;padding:16px;font-size:17px;border:0;border-radius:12px;background:#0f766e;color:#fff;font-weight:700}
+button:disabled{background:#9ca3af} .ok{color:#15803d} .no{color:#b91c1c} li{margin:4px 0;font-size:14px} a{color:#0f766e}
+</style></head><body>
+<h1>Pasang aplikasi Kost Admin</h1>
+<div class="c"><button id="b" disabled>Menunggu Chrome...</button>
+<p id="m" style="font-size:14px;margin:10px 0 0">Tunggu beberapa detik. Kalau tombol menjadi hijau, ketuk untuk memasang.</p></div>
+<div class="c"><b>Hasil pengecekan</b><ul id="l" style="padding-left:18px"></ul></div>
+<p style="text-align:center"><a href="./?admin">Buka panel pengelola tanpa memasang</a></p>
+<p style="text-align:center;font-size:12px;color:#6b7280">pasang v1</p>
+<script>
+const L=document.getElementById('l'), B=document.getElementById('b'), M=document.getElementById('m');
+const add=(ok,t)=>{L.insertAdjacentHTML('beforeend','<li class="'+(ok?'ok':'no')+'">'+(ok?'✔ ':'✘ ')+t+'</li>')};
+const standalone=navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+let ev=null;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();ev=e;B.disabled=false;B.textContent='Pasang aplikasi sekarang';add(true,'Chrome mengizinkan pemasangan')});
+B.onclick=async()=>{if(!ev)return;ev.prompt();const r=await ev.userChoice;M.textContent=r.outcome==='accepted'?'Terpasang. Cek ikon Kost Admin di layar utama.':'Pemasangan dibatalkan.';ev=null;B.disabled=true};
+addEventListener('appinstalled',()=>{M.textContent='Terpasang. Cek ikon Kost Admin di layar utama.'});
+(async()=>{
+ add(location.protocol==='https:'||location.hostname==='localhost','Alamat aman (https)');
+ add(!standalone,standalone?'Sudah dibuka sebagai aplikasi':'Dibuka lewat browser (normal)');
+ try{const r=await fetch('manifest-admin.json',{cache:'no-store'});const j=await r.json();add(r.ok,'manifest-admin.json terbaca: '+j.name)}catch(e){add(false,'manifest-admin.json TIDAK terbaca (file belum diupload?)')}
+ for(const f of ['icon-192.png','icon-512.png']){try{const r=await fetch(f,{cache:'no-store'});add(r.ok,f+(r.ok?' ada':' TIDAK ADA'))}catch(e){add(false,f+' TIDAK ADA')}}
+ if(!('serviceWorker' in navigator)){add(false,'Browser tidak mendukung service worker')}
+ else{try{const g=await navigator.serviceWorker.register('sw-admin.js',{scope:'./'});await navigator.serviceWorker.ready;add(true,'sw-admin.js aktif')}catch(e){add(false,'sw-admin.js gagal: '+e.message)}}
+ setTimeout(()=>{if(!ev&&!standalone){add(false,'Chrome belum mengizinkan pemasangan. Coba tutup halaman ini lalu buka lagi; atau pakai menu ⋮ > Instal aplikasi');M.textContent='Kirim screenshot halaman ini ke Fendi/Claude.'}},6000);
+})();
+</script></body></html>
