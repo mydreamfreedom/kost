@@ -55,6 +55,13 @@ dialog{border:0;border-radius:14px;padding:16px;width:min(440px,94vw)}dialog::ba
 const API_URL = 'https://script.google.com/macros/s/AKfycbwYS3ZuMqTO6gn8HSd1bGhxndEwedFjU_h70Md9sW_RfpP_uyQpf42kXRRPLXmpWItbyQ/exec';
 /* ====================================================================== */
 
+/* Panel admin dipasang sebagai aplikasi tersendiri ("Kost Admin") yang langsung membuka panel pengelola */
+if (new URLSearchParams(location.search).get('admin') !== null) {
+  const mf = document.querySelector('link[rel="manifest"]'); if (mf) mf.href = 'manifest-admin.json';
+  document.title = 'Kost Admin';
+  const at = document.createElement('meta'); at.name = 'apple-mobile-web-app-title'; at.content = 'Kost Admin'; document.head.appendChild(at);
+}
+
 /* perbaiki alamat tanpa garis miring (mis. /kost?t=...) */
 (function () { const p = location.pathname; if (!p.endsWith('/') && !/\.[a-z0-9]+$/i.test(p)) location.replace(p + '/' + location.search + location.hash); })();
 
@@ -116,7 +123,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v10</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v11</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -166,7 +173,7 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
-  h += '<p class="mut" style="text-align:center">v10</p>';
+  h += '<p class="mut" style="text-align:center">v11</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -243,6 +250,7 @@ let SES = localStorage.getItem('kost_admin') || '', AD = null, TAB = 'ringkas', 
 
 function adminView() {
   $('#hSub').textContent = 'Panel pengelola';
+  window.__redraw = () => { if (AD && TAB === 'ringkas') tRingkas(); }; // tombol pasang muncul begitu browser siap
   if (!SES) return loginView();
   loadAdmin();
 }
@@ -358,11 +366,32 @@ function planDlg(pid) {
 }
 async function planGo(pid) { if (await safe(() => A('planMoveOut', { penghuni_id: pid, tanggal_keluar: $('#pt').value }))) { $('#dlg').close(); toast('Tersimpan'); loadAdmin(); } }
 
+/* ---- Kartu "Pasang aplikasi" di layar HP pengelola ---- */
+function installCard() {
+  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  let tutup = false; try { tutup = !!localStorage.getItem('kost_pasang_tutup'); } catch (e) {}
+  if (standalone || tutup) return '';
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const mobile = ios || /Android/i.test(navigator.userAgent);
+  let isi;
+  if (DEFERRED) isi = '<button class="big-btn" onclick="pasangGo()">Pasang aplikasi di layar utama</button>';
+  else if (ios) isi = '<ol style="margin:6px 0 0 18px;padding:0"><li>Buka halaman ini lewat <b>Safari</b></li><li>Ketuk <b>Bagikan</b> (kotak dengan panah ↑)</li><li>Pilih <b>Tambah ke Layar Utama</b></li><li>Buka dari ikon <b>Kost Admin</b>, lalu login sekali</li></ol>';
+  else if (mobile) isi = '<div class="mut">Buka menu <b>⋮</b> di Chrome, lalu pilih <b>Instal aplikasi</b> (atau <b>Tambahkan ke layar utama</b>).</div>';
+  else return '';
+  return `<div class="warn"><div class="row"><b>Pasang aplikasi Kost Admin</b><button class="sm sec" onclick="tutupPasang()">Tutup</button></div><div class="mut" style="margin:4px 0 8px">Buka panel pengelola langsung dari layar utama HP, tanpa mengetik link.</div>${isi}</div>`;
+}
+async function pasangGo() {
+  if (!DEFERRED) return;
+  DEFERRED.prompt(); const pilih = await DEFERRED.userChoice; DEFERRED = null;
+  if (pilih && pilih.outcome === 'accepted') tutupPasang(); else if (TAB === 'ringkas') tRingkas();
+}
+function tutupPasang() { try { localStorage.setItem('kost_pasang_tutup', '1'); } catch (e) {} if (TAB === 'ringkas') tRingkas(); }
+
 function tRingkas() {
   const r = AD.ringkasan;
   const bayarBulanIni = AD.bills.filter(b => b.periode === AD.hari_ini.slice(0, 7) && b.jenis.startsWith('Sewa'));
   const sudah = bayarBulanIni.filter(b => b.sisa <= 0).length;
-  $('#tab').innerHTML = `<div class="grid">
+  $('#tab').innerHTML = installCard() + `<div class="grid">
     <div class="stat"><span class="mut">Hunian</span><b>${r.kamar_terisi}/${r.kamar_total}</b></div>
     <div class="stat" onclick="TAB='kamar';drawAdmin()" style="cursor:pointer"><span class="mut">Kamar kosong</span><b>${r.kamar_kosong}</b><span class="mut">${r.kamar_akan_kosong} akan kosong</span></div>
     <div class="stat"><span class="mut">Tunggakan</span><b class="${r.tunggakan_total ? 'neg' : ''}">${rp(r.tunggakan_total)}</b><span class="mut">${r.tunggakan_jumlah} tagihan</span></div>
