@@ -145,7 +145,7 @@ function drawPublic() {
       ${r.fasilitas ? `<div class="mut">${esc(r.fasilitas)}</div>` : ''}
       ${btn(msg, 'Tanya via WhatsApp')}</div>`;
   });
-  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v16</p>`;
+  h += `<p class="mut" style="text-align:center">Diperbarui ${tgl(d.diperbarui)} • v17</p>`;
   $('#app').innerHTML = h;
 }
 
@@ -199,7 +199,7 @@ async function tenantView() {
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
   h += helpCard(d);
-  h += '<p class="mut" style="text-align:center">v16</p>';
+  h += '<p class="mut" style="text-align:center">v17</p>';
   $('#app').innerHTML = h;
   initPush(d);
 }
@@ -326,8 +326,7 @@ async function aturanView() {
   $('#hTitle').textContent = d.nama_usaha || 'Kost';
   document.title = 'Tata tertib • ' + (d.nama_usaha || 'Kost');
   $('#app').innerHTML = `<div class="card" style="padding:18px">${renderAturan(d.teks)}</div>
-    <div class="card noprint"><div class="mut">Persetujuan dilakukan secara digital di dashboard penghuni (foto KTP dan tanda tangan di layar) saat pertama kali membuka link pribadi Anda.</div><div class="actions"><button onclick="window.print()">🖨️ Cetak / simpan PDF</button></div></div>
-    <p class="mut noprint" style="text-align:center">Versi ${esc(d.versi)}</p>`;
+    <div class="card noprint"><div class="mut">Persetujuan dilakukan secara digital di dashboard penghuni (foto KTP dan tanda tangan di layar) saat pertama kali membuka link pribadi Anda.</div><div class="actions"><button onclick="window.print()">🖨️ Cetak / simpan PDF</button></div></div>`;
 }
 
 /* ---- Push notification (OneSignal) ---- */
