@@ -198,10 +198,50 @@ async function tenantView() {
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
   h += d.payments.length ? '<table>' + d.payments.map(p => `<tr><td>${tgl(p.tanggal)} • ${esc(p.metode)}</td><td>${rp(p.jumlah)}</td><td>${p.status === 'Dikonfirmasi' ? '✅' : p.status === 'Ditolak' ? '❌' : '⏳'}</td></tr>`).join('') + '</table><div class="mut">⏳ menunggu konfirmasi pengelola</div>' : '<span class="mut">Belum ada pembayaran.</span>';
   h += '</div>';
+  h += serahCards(d);
   h += helpCard(d);
   h += '<p class="mut" style="text-align:center">v17</p>';
   $('#app').innerHTML = h;
   initPush(d);
+}
+
+/* ---- Serah terima kamar & deposit (penghuni) ---- */
+function fotoGrid(ids) {
+  return ids && ids.length ? `<div class="actions">${ids.map(i => `<a target="_blank" rel="noopener" href="https://drive.google.com/file/d/${encodeURIComponent(i)}/view"><img loading="lazy" alt="foto kamar" style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--line)" src="https://drive.google.com/thumbnail?id=${encodeURIComponent(i)}&sz=w400"></a>`).join('')}</div>` : '';
+}
+function clTable(cl) {
+  return `<table style="margin-top:6px">${(cl || []).map(c => `<tr><td>${esc(c.item)}</td><td>${c.kondisi === 'Baik' ? '✅ Baik' : '⚠️ ' + esc(c.catatan)}</td></tr>`).join('')}</table>`;
+}
+function serahCards(d) {
+  const sr = d.serah; if (!sr) return '';
+  let h = '';
+  const m = sr.masuk;
+  if (m) {
+    h += `<h3 style="margin:16px 4px 8px">Serah terima kamar</h3><div class="card"><div class="row"><b>Kondisi kamar saat masuk</b><span class="badge ${m.setuju_waktu ? 'b-ok' : 'b-warn'}">${m.setuju_waktu ? '✓ disetujui' : 'menunggu persetujuan'}</span></div>
+      <div class="mut">Dicatat ${esc(m.waktu || '')}</div>${clTable(m.checklist)}${fotoGrid(m.foto)}
+      ${sr.token && m.saldo_token != null ? `<div class="mut" style="margin-top:6px">⚡ Saldo token saat masuk: <b>${rp(m.saldo_token)}</b>. Saat pindah, saldo token harus dikembalikan seperti semula.</div>` : ''}
+      ${m.catatan ? `<div class="mut" style="margin-top:6px">Catatan: ${esc(m.catatan)}</div>` : ''}
+      ${m.setuju_waktu ? '' : `<div class="actions"><button onclick="ackSerah('${m.st_id}')">Saya setuju dengan kondisi awal ini</button></div>`}</div>`;
+  }
+  const k = sr.keluar, dp = sr.deposit;
+  if (k || dp) {
+    h += `<h3 style="margin:16px 4px 8px">Penyelesaian deposit</h3><div class="card">`;
+    if (k) h += `<div class="mut">Kondisi kamar saat keluar (${esc(k.waktu || '')})</div>${clTable(k.checklist)}${fotoGrid(k.foto)}${sr.token && k.saldo_token != null ? `<div class="mut">⚡ Saldo token akhir: <b>${rp(k.saldo_token)}</b></div>` : ''}${k.catatan ? `<div class="mut">Catatan: ${esc(k.catatan)}</div>` : ''}`;
+    if (dp) {
+      h += `<table style="margin-top:8px"><tr><td>Deposit dibayar</td><td>${rp(dp.deposit_dibayar)}</td></tr>
+        ${(dp.rincian || []).map(i => `<tr><td class="neg">− ${esc(i.alasan)}</td><td class="neg">${rp(i.jumlah)}</td></tr>`).join('')}
+        ${dp.hangus ? `<tr><td class="neg">Deposit hangus: ${esc(dp.hangus_alasan)}</td><td class="neg">${rp(dp.deposit_dibayar)}</td></tr>` : ''}
+        <tr><td><b>Sisa dikembalikan</b></td><td><b>${rp(dp.sisa_kembali)}</b></td></tr>
+        ${dp.kurang_bayar > 0 ? `<tr><td class="neg"><b>Biaya melebihi deposit (harus dibayar)</b></td><td class="neg"><b>${rp(dp.kurang_bayar)}</b></td></tr>` : ''}</table>
+        <div class="mut" style="margin-top:6px">${dp.status === 'Selesai' ? '✅ Selesai' + (dp.dikembalikan ? ' pada ' + tgl(dp.dikembalikan) : '') : '⏳ Menunggu penyelesaian oleh pengelola'}</div>`;
+    }
+    h += '</div>';
+  }
+  return h;
+}
+async function ackSerah(id) {
+  if (!confirm('Setujui kondisi awal kamar sesuai berita acara ini?')) return;
+  if (await safe(() => api('ackHandover', { token: TOKEN, st_id: id }))) { toast('Terima kasih, persetujuan tercatat'); tenantView(); }
 }
 
 function payDlg(id, sisa) {
@@ -408,7 +448,7 @@ async function doLogin() {
 }
 function logout() { localStorage.removeItem('kost_admin'); SES = ''; loginView(); }
 /* Layar proses: semua aksi yang MENULIS data dikunci (modal) sampai selesai, supaya tidak terklik dua kali */
-const WRITES = new Set(['confirmPayment', 'recordCash', 'waiveFine', 'addTenant', 'moveOut', 'addExpense', 'setRoom', 'planMoveOut', 'runDaily', 'testPush', 'syncPush', 'updateKeluhan']);
+const WRITES = new Set(['confirmPayment', 'recordCash', 'waiveFine', 'addTenant', 'moveOut', 'addExpense', 'setRoom', 'planMoveOut', 'runDaily', 'testPush', 'syncPush', 'updateKeluhan', 'handoverIn', 'handoverOut', 'refundDone', 'ackHandover']);
 let BUSY = false;
 $('#busy').addEventListener('cancel', e => e.preventDefault());
 function busyOn(txt) { $('#busyTxt').textContent = txt; const b = $('#busy'); if (!b.open) b.showModal(); }
@@ -673,8 +713,8 @@ function tPenghuni() {
   const belum = AD.tenants.filter(t => !t.link_dikirim).length;
   let h = `<div class="actions" style="margin-bottom:10px"><button onclick="tenantDlg()">+ Penghuni baru</button>${belum ? `<button style="background:#25d366" onclick="kirimBerikutnya()">Kirim link berikutnya via WA (${belum} belum)</button>` : '<span class="mut">✅ Semua link sudah dikirim</span>'}</div>`;
   h += AD.tenants.map(t => `<div class="card"><div class="row"><b>${esc(t.nama)}</b><span><span class="badge ${t.link_dikirim ? 'b-ok' : 'b-gray'}">${t.link_dikirim ? '✓ link dikirim ' + tgl(t.link_dikirim) : 'link belum dikirim'}</span> <span class="badge ${t.push_aktif ? 'b-ok' : 'b-warn'}">${t.push_aktif ? '🔔 aktif' : '🔕 belum'}</span>${AD.fitur_aturan ? ` <span class="badge ${t.setuju_ok ? 'b-ok' : 'b-warn'}">${t.setuju_ok ? '✓ setuju tata tertib' : 'belum setuju'}</span>` : ''}</span></div>
-    <div class="mut">${esc(t.kamar)} • ${esc(t.lokasi)} • masuk ${tgl(t.tanggal_masuk)} • ${rp(t.harga_sewa)}/bln${t.deposit ? ' • deposit ' + rp(t.deposit) : ''}${t.tanggal_keluar ? '<br><b>Rencana keluar ' + tgl(t.tanggal_keluar) + '</b>' : ''}</div>
-    <div class="actions"><button class="sm" style="background:#25d366" onclick="kirimLink('${t.penghuni_id}')">${t.link_dikirim ? 'Kirim ulang via WA' : 'Kirim link via WA'}</button><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button>${t.dok_url ? `<a class="btn sm sec" style="text-decoration:none;font-size:13px;padding:6px 10px;color:#111" target="_blank" rel="noopener" href="${esc(t.dok_url)}">Dokumen perjanjian</a>` : ''}${t.ktp_url ? `<a class="btn sm sec" style="text-decoration:none;font-size:13px;padding:6px 10px;color:#111" target="_blank" rel="noopener" href="${esc(t.ktp_url)}">KTP</a>` : ''}<button class="sm sec" onclick="planDlg('${t.penghuni_id}')">Rencana keluar</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
+    <div class="mut">${esc(t.kamar)} • ${esc(t.lokasi)} • masuk ${tgl(t.tanggal_masuk)} • ${rp(t.harga_sewa)}/bln${t.deposit ? ' • deposit ' + rp(t.deposit) : ''}${AD.fitur_serah ? ' • ' + (t.st_masuk ? (t.st_masuk.setuju_waktu ? '✓ kondisi awal disetujui' : 'kondisi awal belum disetujui') : 'belum ada serah terima masuk') : ''}${t.tanggal_keluar ? '<br><b>Rencana keluar ' + tgl(t.tanggal_keluar) + '</b>' : ''}</div>
+    <div class="actions"><button class="sm" style="background:#25d366" onclick="kirimLink('${t.penghuni_id}')">${t.link_dikirim ? 'Kirim ulang via WA' : 'Kirim link via WA'}</button><button class="sm sec" onclick="copyLink('${base}/?t=${t.token}')">Salin link dashboard</button>${t.dok_url ? `<a class="btn sm sec" style="text-decoration:none;font-size:13px;padding:6px 10px;color:#111" target="_blank" rel="noopener" href="${esc(t.dok_url)}">Dokumen perjanjian</a>` : ''}${t.ktp_url ? `<a class="btn sm sec" style="text-decoration:none;font-size:13px;padding:6px 10px;color:#111" target="_blank" rel="noopener" href="${esc(t.ktp_url)}">KTP</a>` : ''}${AD.fitur_serah ? `<button class="sm sec" onclick="serahInDlg('${t.penghuni_id}')">${t.st_masuk ? 'Serah terima masuk ✓' : 'Serah terima masuk'}</button><button class="sm sec" onclick="serahOutDlg('${t.penghuni_id}')">${t.dep ? 'Deposit & serah terima keluar ✓' : 'Serah terima keluar & deposit'}</button><button class="sm sec" onclick="serahRiwayat('${t.penghuni_id}')">Riwayat</button>` : ''}<button class="sm sec" onclick="planDlg('${t.penghuni_id}')">Rencana keluar</button><button class="sm bad" onclick="keluar('${t.penghuni_id}','${esc(t.nama)}')">Keluar kost</button></div></div>`).join('');
   $('#tab').innerHTML = h;
 }
 /* ---- Notifikasi: jangkauan push, tes kirim, dan cadangan lewat WhatsApp ---- */
@@ -733,6 +773,89 @@ function tNotif() {
   $('#tab').innerHTML = h;
 }
 function copyLink(u) { navigator.clipboard.writeText(u).then(() => toast('Link disalin'), () => prompt('Salin link:', u)); }
+/* ---- Admin: serah terima & deposit ---- */
+function tenantById(id) { return AD.tenants.find(x => x.penghuni_id === id); }
+function clForm(prefix) {
+  return `<div style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px">${(AD.serah_item || []).map((it, i) => `<div style="padding:4px 0;border-bottom:1px solid var(--line)"><div class="row"><span>${esc(it)}</span><select id="${prefix}k${i}" style="width:auto;margin:0" onchange="$('#${prefix}c${i}').style.display=this.value==='Baik'?'none':'block'"><option>Baik</option><option>Ada catatan</option></select></div><input id="${prefix}c${i}" maxlength="200" placeholder="Jelaskan kondisinya" style="display:none"></div>`).join('')}</div>`;
+}
+function clRead(prefix) {
+  return (AD.serah_item || []).map((it, i) => ({ item: it, kondisi: $('#' + prefix + 'k' + i).value, catatan: $('#' + prefix + 'c' + i).value.trim() }));
+}
+async function fotosRead(id) {
+  const fs = [...($('#' + id).files || [])].slice(0, 6);
+  return Promise.all(fs.map(async f => ({ data: await compress(f, 1000, .7) })));
+}
+function serahInDlg(id) {
+  const t = tenantById(id), d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Serah terima masuk • ${esc(t.nama)}</h3><div class="mut">Kamar ${esc(t.kamar)} • ${esc(t.lokasi)}</div>
+    <label>Kondisi kamar</label>${clForm('si')}
+    <label>Foto kondisi kamar (maks 6)</label><input id="sif" type="file" accept="image/*" multiple>
+    ${t.lokasi_token ? `<label>Saldo token listrik saat masuk (Rp)</label><input id="sit" type="number" inputmode="numeric" value="${t.token_awal || 20000}">` : ''}
+    <label>Catatan (opsional)</label><input id="sic" maxlength="300">
+    <div class="actions"><button onclick="serahInGo('${id}')">Simpan</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>
+    <p class="mut">Penghuni akan diminta menyetujui kondisi awal ini di dashboard-nya.</p>`;
+  d.showModal();
+}
+async function serahInGo(id) {
+  const t = tenantById(id);
+  const r = await safe(async () => A('handoverIn', { penghuni_id: id, checklist: clRead('si'), foto: await fotosRead('sif'), saldo_token: t.lokasi_token ? $('#sit').value : '', catatan: $('#sic').value }));
+  if (r) { $('#dlg').close(); toast('Serah terima masuk tersimpan'); loadAdmin(); }
+}
+function serahOutDlg(id) {
+  const t = tenantById(id), d = $('#dlg');
+  window.SO = { id };
+  d.innerHTML = `<h3 style="margin-top:0">Serah terima keluar & deposit • ${esc(t.nama)}</h3><div class="mut">Kamar ${esc(t.kamar)} • Deposit dibayar ${rp(t.deposit_dibayar || 0)}</div>
+    <label>Kondisi kamar saat keluar</label>${clForm('so')}
+    <label>Foto kondisi kamar (maks 6)</label><input id="sof" type="file" accept="image/*" multiple>
+    ${t.lokasi_token ? `<label>Saldo token akhir (Rp) — awal ${rp(t.st_masuk && t.st_masuk.saldo_token != null ? t.st_masuk.saldo_token : (t.token_awal || 20000))}</label><input id="sot" type="number" inputmode="numeric" oninput="soHitung()"><label style="display:flex;gap:6px;align-items:center"><input id="soa" type="checkbox" style="width:auto;margin:0" onchange="soHitung()"> Abaikan potongan token</label>` : ''}
+    <label>Potongan lain (pembersihan/perbaikan)</label>
+    <div id="sop">${[0, 1, 2].map(i => `<div class="row" style="gap:6px"><input id="sa${i}" placeholder="Alasan" maxlength="120" style="margin:0"><input id="sj${i}" type="number" inputmode="numeric" placeholder="Rp" style="margin:0;width:110px" oninput="soHitung()"></div>`).join('')}</div>
+    <label style="display:flex;gap:6px;align-items:center"><input id="soh" type="checkbox" style="width:auto;margin:0" onchange="$('#sohw').style.display=this.checked?'block':'none';soHitung()"> Pelanggaran berat (deposit hangus)</label>
+    <input id="sohw" maxlength="200" placeholder="Alasan pelanggaran berat" style="display:none">
+    <label>Catatan (opsional)</label><input id="soc" maxlength="300">
+    <div class="ok" id="soh2" style="margin-top:10px"></div>
+    <div class="actions"><button onclick="serahOutGo()">Simpan rincian</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>`;
+  d.showModal(); soHitung();
+}
+function soData() {
+  const t = tenantById(window.SO.id), dep = t.deposit_dibayar || 0;
+  let total = 0;
+  const potongan = [0, 1, 2].map(i => ({ alasan: $('#sa' + i).value.trim(), jumlah: Number($('#sj' + i).value) || 0 })).filter(p => p.alasan || p.jumlah);
+  potongan.forEach(p => total += p.jumlah);
+  let tokenKurang = 0;
+  if (t.lokasi_token && $('#sot') && $('#sot').value !== '' && !$('#soa').checked) {
+    const awal = t.st_masuk && t.st_masuk.saldo_token != null ? t.st_masuk.saldo_token : (t.token_awal || 20000);
+    tokenKurang = Math.max(0, awal - Number($('#sot').value)); total += tokenKurang;
+  }
+  const hangus = $('#soh').checked;
+  return { t, dep, potongan, total, tokenKurang, hangus, sisa: hangus ? 0 : Math.max(0, dep - total), kurang: hangus ? 0 : Math.max(0, total - dep) };
+}
+function soHitung() {
+  const x = soData();
+  $('#soh2').innerHTML = `Deposit ${rp(x.dep)}${x.tokenKurang ? '<br>Kekurangan token: ' + rp(x.tokenKurang) : ''}<br>Total potongan: <b>${rp(x.total)}</b>${x.hangus ? '<br><b class="neg">Deposit hangus seluruhnya</b>' : ''}<br>Sisa dikembalikan: <b>${rp(x.sisa)}</b>${x.kurang ? `<br><span class="neg">Biaya melebihi deposit: ${rp(x.kurang)} (ditagih ke penghuni)</span>` : ''}`;
+}
+async function serahOutGo() {
+  const x = soData(), id = window.SO.id;
+  if (x.t.lokasi_token && $('#sot').value === '') return toast('Isi saldo token akhir');
+  if (!confirm('Simpan rincian penyelesaian? Sisa dikembalikan ' + rp(x.sisa) + '. Penghuni akan menerima notifikasi.')) return;
+  const r = await safe(async () => A('handoverOut', { penghuni_id: id, checklist: clRead('so'), foto: await fotosRead('sof'), saldo_token: x.t.lokasi_token ? $('#sot').value : '', token_abaikan: x.t.lokasi_token ? $('#soa').checked : false, potongan: x.potongan, hangus: x.hangus, hangus_alasan: $('#sohw').value, catatan: $('#soc').value }));
+  if (r) { $('#dlg').close(); toast('Rincian tersimpan. Setelah sisa dikembalikan, tandai selesai.'); loadAdmin(); }
+}
+async function serahRiwayat(id) {
+  const t = tenantById(id);
+  const r = await safe(() => A('getSerah', { penghuni_id: id })); if (!r) return;
+  const d = $('#dlg');
+  d.innerHTML = `<h3 style="margin-top:0">Riwayat • ${esc(t.nama)}</h3><div style="max-height:62vh;overflow:auto">${r.serah.length ? r.serah.map(x => `<div class="card"><div class="row"><b>Serah terima ${esc(x.jenis)}</b><span class="badge ${x.setuju_waktu ? 'b-ok' : 'b-gray'}">${x.setuju_waktu ? 'disetujui penghuni' : 'belum disetujui'}</span></div><div class="mut">${esc(x.waktu || '')}${x.saldo_token != null ? ' • token ' + rp(x.saldo_token) : ''}</div>${clTable(x.checklist)}${fotoGrid(x.foto)}${x.catatan ? `<div class="mut">${esc(x.catatan)}</div>` : ''}</div>`).join('') : '<p class="mut">Belum ada serah terima.</p>'}
+    ${r.deposit ? `<div class="card"><b>Deposit</b><table style="margin-top:6px"><tr><td>Dibayar</td><td>${rp(r.deposit.deposit_dibayar)}</td></tr>${r.deposit.rincian.map(i => `<tr><td>− ${esc(i.alasan)}</td><td>${rp(i.jumlah)}</td></tr>`).join('')}${r.deposit.hangus ? `<tr><td class="neg">Hangus: ${esc(r.deposit.hangus_alasan)}</td><td></td></tr>` : ''}<tr><td><b>Sisa dikembalikan</b></td><td><b>${rp(r.deposit.sisa_kembali)}</b></td></tr>${r.deposit.kurang_bayar ? `<tr><td class="neg">Kurang bayar</td><td class="neg">${rp(r.deposit.kurang_bayar)}</td></tr>` : ''}</table><div class="mut">${r.deposit.status === 'Selesai' ? '✅ Selesai ' + tgl(r.deposit.dikembalikan) : '⏳ Menunggu'}</div>
+      ${r.deposit.status !== 'Selesai' ? `<div class="actions"><button class="sm" onclick="refundGo('${id}')">Tandai deposit selesai & nonaktifkan penghuni</button></div>` : ''}</div>` : ''}</div>
+    <div class="actions"><button class="sec" onclick="$('#dlg').close()">Tutup</button></div>`;
+  d.showModal();
+}
+async function refundGo(id) {
+  const t = tenantById(id);
+  if (!confirm('Tandai deposit ' + t.nama + ' selesai dan nonaktifkan penghuni (pindah)?')) return;
+  if (await safe(() => A('refundDone', { penghuni_id: id }))) { $('#dlg').close(); toast('Selesai'); loadAdmin(); }
+}
 async function keluar(id, nama) { if (!confirm(nama + ' keluar dari kost? Tagihan yang belum lunas tetap tercatat.')) return; if (await safe(() => A('moveOut', { penghuni_id: id }))) { toast('Tercatat'); loadAdmin(); } }
 function tenantDlg(kid) {
   const kosong = AD.rooms.filter(r => r.kosong);
@@ -779,13 +902,13 @@ async function tLaporan() {
   const R = await safe(() => A('report', { tahun: yr })); if (!R) return;
   const T = R.total, cls = n => n < 0 ? 'neg' : '';
   $('#tab').innerHTML = `<div class="row" style="margin-bottom:8px"><b>Laba rugi ${R.tahun} (basis kas)</b><select style="width:auto;margin:0" onchange="window.RY=this.value;tLaporan()">${[0, 1, 2].map(i => +AD.hari_ini.slice(0, 4) - i).map(y => `<option ${String(y) === String(R.tahun) ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
-    <div class="grid"><div class="stat"><span class="mut">Pendapatan sewa</span><b>${rp(T.sewa)}</b></div><div class="stat"><span class="mut">Pendapatan denda</span><b>${rp(T.denda)}</b></div>
+    <div class="grid"><div class="stat"><span class="mut">Pendapatan sewa</span><b>${rp(T.sewa)}</b></div><div class="stat"><span class="mut">Pendapatan denda</span><b>${rp(T.denda)}</b></div>${T.lain ? `<div class="stat"><span class="mut">Pendapatan lain (potongan deposit)</span><b>${rp(T.lain)}</b></div>` : ''}
     <div class="stat"><span class="mut">Pengeluaran</span><b>${rp(T.pengeluaran)}</b></div><div class="stat"><span class="mut">Laba bersih</span><b class="${cls(T.laba)}">${rp(T.laba)}</b></div></div>
-    <div class="card" style="margin-top:12px;overflow-x:auto"><table><tr><th>Bulan</th><th>Sewa</th><th>Denda</th><th>Biaya</th><th>Laba</th></tr>
-    ${R.bulan.map(b => `<tr><td>${MONTHS[b.m - 1]}</td><td>${rp(b.sewa)}</td><td>${rp(b.denda)}</td><td>${rp(b.pengeluaran)}</td><td class="${cls(b.laba)}">${rp(b.laba)}</td></tr>`).join('')}
-    <tr><td><b>Total</b></td><td><b>${rp(T.sewa)}</b></td><td><b>${rp(T.denda)}</b></td><td><b>${rp(T.pengeluaran)}</b></td><td class="${cls(T.laba)}"><b>${rp(T.laba)}</b></td></tr></table></div>
+    <div class="card" style="margin-top:12px;overflow-x:auto"><table><tr><th>Bulan</th><th>Sewa</th><th>Denda</th><th>Lain</th><th>Biaya</th><th>Laba</th></tr>
+    ${R.bulan.map(b => `<tr><td>${MONTHS[b.m - 1]}</td><td>${rp(b.sewa)}</td><td>${rp(b.denda)}</td><td>${rp(b.lain || 0)}</td><td>${rp(b.pengeluaran)}</td><td class="${cls(b.laba)}">${rp(b.laba)}</td></tr>`).join('')}
+    <tr><td><b>Total</b></td><td><b>${rp(T.sewa)}</b></td><td><b>${rp(T.denda)}</b></td><td><b>${rp(T.lain || 0)}</b></td><td><b>${rp(T.pengeluaran)}</b></td><td class="${cls(T.laba)}"><b>${rp(T.laba)}</b></td></tr></table></div>
     <div class="card" style="overflow-x:auto"><b>Per lokasi</b><table><tr><th>Lokasi</th><th>Pendapatan</th><th>Biaya</th><th>Laba</th></tr>
-    ${R.lokasi.map(l => `<tr><td>${esc(l.nama)}</td><td>${rp(l.sewa + l.denda)}</td><td>${rp(l.pengeluaran)}</td><td class="${cls(l.laba)}">${rp(l.laba)}</td></tr>`).join('')}</table></div>
+    ${R.lokasi.map(l => `<tr><td>${esc(l.nama)}</td><td>${rp(l.sewa + l.denda + (l.lain || 0))}</td><td>${rp(l.pengeluaran)}</td><td class="${cls(l.laba)}">${rp(l.laba)}</td></tr>`).join('')}</table></div>
     <div class="card"><b>Pengeluaran per kategori</b><table>${R.kategori.map(k => `<tr><td>${esc(k.nama)}</td><td>${rp(k.jumlah)}</td></tr>`).join('') || '<tr><td class="mut">Belum ada.</td></tr>'}</table></div>
     <p class="mut">Deposit diterima tahun ini: ${rp(T.deposit)} (kewajiban, bukan pendapatan, tidak masuk laba).</p>`;
 }
