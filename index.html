@@ -179,7 +179,7 @@ async function tenantView() {
   if (d.aturan && d.aturan.perlu_setuju) return consentView(d); // wajib setuju tata tertib dulu (backend v19+)
   const open = d.bills.filter(b => b.sisa > 0);
   const totalSisa = open.reduce((s, b) => s + b.sisa, 0);
-  let h = '<div id="pushbox"></div>';
+  let h = '<div id="pushbox"></div><div id="bonusbox"></div>';
   h += `<div class="card"><div class="mut">Total yang harus dibayar</div><div class="big ${totalSisa > 0 ? '' : ''}">${rp(totalSisa)}</div>
     ${totalSisa === 0 ? '<div class="mut">Tidak ada tagihan. Terima kasih! 🙌</div>' : ''}</div>`;
   if (d.info_pembayaran) h += `<div class="card"><b>Cara pembayaran</b><div class="mut" style="white-space:pre-line;margin-top:4px">${esc(d.info_pembayaran)}</div></div>`;
@@ -200,9 +200,28 @@ async function tenantView() {
   h += '</div>';
   h += serahCards(d);
   h += helpCard(d);
-  h += '<p class="mut" style="text-align:center">v17</p>';
+  h += '<p class="mut" style="text-align:center">v18</p>';
   $('#app').innerHTML = h;
   initPush(d);
+  bonusLoad();
+}
+
+/* ---- Bonus Aktivasi (backend Bonus.gs; kartu otomatis tersembunyi jika backend belum dipasang atau promo tidak berlaku) ---- */
+const BONUS_BADGE = { 'Belum lengkap': ['b-warn', 'Selesaikan langkah'], 'Lengkap': ['b-blue', 'Terdaftar'], 'Diterapkan': ['b-ok', 'Potongan aktif'], 'Terpenuhi': ['b-ok', 'Diterima ✅'], 'Hangus': ['b-bad', 'Tidak berlaku'], 'Cek manual': ['b-warn', 'Dicek pengelola'], 'Lewat batas': ['b-gray', 'Berakhir'] };
+function bonusHtml(b) {
+  const bd = BONUS_BADGE[b.status] || ['b-gray', b.status];
+  const aktif = !['Hangus', 'Lewat batas'].includes(b.status);
+  return `<div class="card" style="border:1.5px solid ${aktif ? 'var(--pri)' : '#e5e7eb'}">
+    <div class="row"><b>🎁 Bonus Aktivasi ${rp(b.nominal)}</b><span class="badge ${bd[0]}">${esc(bd[1])}</span></div>
+    <div class="mut" style="margin:4px 0 8px">Potongan sewa ${esc(b.periode_label)} untuk penghuni yang memakai aplikasi. Berlaku satu kali.</div>
+    ${b.langkah.map((l, i) => `<div style="display:flex;gap:8px;margin:5px 0"><span>${l.ok ? '✅' : '⬜'}</span><span ${l.ok ? 'class="mut" style="text-decoration:line-through"' : ''}>${i + 1}. ${esc(l.label)}</span></div>`).join('')}
+    ${b.pesan ? `<div class="${aktif ? 'ok' : 'mut'}" style="margin:10px 0 0">${esc(b.pesan)}</div>` : ''}</div>`;
+}
+async function bonusLoad() {
+  const box = $('#bonusbox'); if (!box) return;
+  let b; try { b = await api('bonus', { token: TOKEN }); } catch (e) { return; }
+  window.BONUS = b; if (!b || !b.tampil) return;
+  box.innerHTML = bonusHtml(b);
 }
 
 /* ---- Serah terima kamar & deposit (penghuni) ---- */
@@ -251,7 +270,8 @@ function payDlg(id, sisa) {
     <label>Foto bukti transfer</label><input id="pf" type="file" accept="image/*">
     <label>Catatan (opsional)</label><input id="pc" maxlength="150">
     <div class="actions"><button id="pbtn" onclick="payGo('${id}')">Kirim</button><button class="sec" onclick="$('#dlg').close()">Batal</button></div>
-    <p class="mut">Pembayaran akan dicek dan dikonfirmasi oleh pengelola.</p>`;
+    <p class="mut">Pembayaran akan dicek dan dikonfirmasi oleh pengelola.</p>
+    ${window.BONUS && window.BONUS.status === 'Diterapkan' ? '<p class="ok" style="margin:8px 0 0">🎁 Ketuk Kirim di sini (termasuk untuk pembayaran tunai) supaya Bonus Aktivasi Anda tercatat.</p>' : ''}`;
   d.showModal();
 }
 function compress(file, maxPx, q) {
@@ -305,7 +325,7 @@ function sigPad(cv) {
 }
 function consentView(d) {
   const a = d.aturan;
-  $('#app').innerHTML = `<div class="card">${renderAturan(a.teks)}</div>
+  $('#app').innerHTML = `<div id="bonusbox"></div><div class="card">${renderAturan(a.teks)}</div>
     <div class="card"><h3 style="margin-top:0">Persetujuan digital</h3>
     <div class="mut" style="margin-bottom:8px">Nama: <b>${esc(d.nama)}</b> • Kamar ${esc(d.kamar)}${d.lokasi ? ' • ' + esc(d.lokasi) : ''}</div>
     ${a.ada_ktp ? '<div class="ok">✅ Foto KTP Anda sudah tersimpan.</div>' : '<label>Foto KTP (wajib, pastikan tulisannya terbaca jelas)</label><input id="ckt" type="file" accept="image/*">'}
@@ -315,6 +335,7 @@ function consentView(d) {
     <label style="display:flex;gap:8px;align-items:flex-start;color:var(--ink)"><input type="checkbox" id="cok" style="width:auto;margin:3px 0 0"><span>Saya, <b>${esc(d.nama)}</b>, telah membaca, memahami, dan menyetujui seluruh tata tertib di atas.</span></label>
     <button class="big-btn" id="cgo" style="margin-top:12px">Setujui dan kirim</button>
     <p class="mut">Persetujuan dicatat lengkap dengan nama, tanggal, jam, dan versi tata tertib.</p></div>`;
+  bonusLoad();
   const pad = sigPad($('#csig'));
   $('#cclr').onclick = () => pad.clear();
   $('#cgo').onclick = async () => {
