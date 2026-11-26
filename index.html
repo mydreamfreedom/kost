@@ -185,6 +185,18 @@ async function tenantView() {
   if (d.info_pembayaran) h += `<div class="card"><b>Cara pembayaran</b><div class="mut" style="white-space:pre-line;margin-top:4px">${esc(d.info_pembayaran)}</div></div>`;
   h += '<h3 style="margin:16px 4px 8px">Tagihan</h3>';
   d.bills.forEach(b => {
+    // v19: pembayaran yang sudah dikirim tapi belum dikonfirmasi pengelola
+    const pend = (d.payments || []).filter(p => p.tagihan_id === b.tagihan_id && p.status === 'Menunggu');
+    const pendTotal = pend.reduce((s, p) => s + p.jumlah, 0);
+    let aksi = '';
+    if (b.sisa > 0) {
+      if (pend.length) {
+        aksi = `<div class="ok" style="margin:8px 0 0">⏳ Pembayaran ${rp(pendTotal)} sudah terkirim dan menunggu konfirmasi pengelola. Tidak perlu kirim lagi.</div>`;
+        if (b.sisa - pendTotal > 0) aksi += `<div class="actions"><button class="sec sm" onclick="payDlg('${b.tagihan_id}',${b.sisa - pendTotal})">Kirim pembayaran lain</button></div>`;
+      } else {
+        aksi = `<div class="actions"><button onclick="payDlg('${b.tagihan_id}',${b.sisa})">Saya sudah bayar</button></div>`;
+      }
+    }
     h += `<div class="card"><div class="row"><b>${b.jenis === 'Deposit' ? 'Deposit' : b.jenis + ' ' + periodeLabel(b.periode)}</b>${badge(b)}</div>
       <div class="mut">${dueText(b)}${b.keterangan ? '<br>' + esc(b.keterangan) : ''}</div>
       <table style="margin-top:8px"><tr><td>Pokok</td><td>${rp(b.jumlah)}</td></tr>
@@ -192,7 +204,7 @@ async function tenantView() {
       ${b.keringanan > 0 ? `<tr><td>Keringanan</td><td>-${rp(b.keringanan)}</td></tr>` : ''}
       ${b.dibayar > 0 ? `<tr><td>Sudah dibayar</td><td>-${rp(b.dibayar)}</td></tr>` : ''}
       <tr><td><b>Sisa</b></td><td><b>${rp(b.sisa)}</b></td></tr></table>
-      ${b.sisa > 0 ? `<div class="actions"><button onclick="payDlg('${b.tagihan_id}',${b.sisa})">Saya sudah bayar</button></div>` : ''}</div>`;
+      ${aksi}</div>`;
   });
   h += `<div class="mut" style="margin:4px 4px 12px">${esc(d.aturan_denda)}</div>`;
   h += '<h3 style="margin:16px 4px 8px">Riwayat pembayaran</h3><div class="card">';
@@ -200,7 +212,7 @@ async function tenantView() {
   h += '</div>';
   h += serahCards(d);
   h += helpCard(d);
-  h += '<p class="mut" style="text-align:center">v18</p>';
+  h += '<p class="mut" style="text-align:center">v19</p>';
   $('#app').innerHTML = h;
   initPush(d);
   bonusLoad();
@@ -281,13 +293,21 @@ function compress(file, maxPx, q) {
     img.onerror = () => rej(new Error('Foto tidak bisa dibaca')); img.src = url;
   });
 }
+/* v19: pengiriman dikunci (flag + layar proses) sampai selesai, supaya tidak terkirim dua kali */
+let PAYING = false;
 async function payGo(id) {
+  if (PAYING) return;
+  PAYING = true;
   const btn = $('#pbtn'); btn.disabled = true; btn.textContent = 'Mengirim…';
-  const r = await safe(async () => {
-    const f = $('#pf').files[0];
-    const bukti = f ? { mime: 'image/jpeg', data: await compress(f) } : null;
-    return api('submitPayment', { token: TOKEN, tagihan_id: id, jumlah: $('#pj').value, catatan: $('#pc').value, bukti });
-  });
+  busyOn('Mengirim pembayaran… mohon tunggu, jangan klik lagi');
+  let r = null;
+  try {
+    r = await safe(async () => {
+      const f = $('#pf').files[0];
+      const bukti = f ? { mime: 'image/jpeg', data: await compress(f) } : null;
+      return api('submitPayment', { token: TOKEN, tagihan_id: id, jumlah: $('#pj').value, catatan: $('#pc').value, bukti });
+    });
+  } finally { PAYING = false; busyOff(); }
   btn.disabled = false; btn.textContent = 'Kirim';
   if (r) { $('#dlg').close(); toast('Terkirim, menunggu konfirmasi pengelola'); tenantView(); }
 }
