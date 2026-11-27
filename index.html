@@ -937,12 +937,18 @@ function tBiaya() {
 }
 async function expGo() { if (await safe(() => A('addExpense', { tanggal: $('#xt').value, lokasi_id: $('#xl').value, kategori: $('#xk').value, deskripsi: $('#xd').value, jumlah: $('#xj').value }))) { toast('Tersimpan'); loadAdmin(); } }
 
+/* ---- Laporan laba rugi: pilihan basis kas / basis tagihan ---- */
 async function tLaporan() {
   const yr = window.RY || AD.hari_ini.slice(0, 4);
+  const basis = window.RB || 'kas';
   $('#tab').innerHTML = '<div class="card">Memuat laporan…</div>';
-  const R = await safe(() => A('report', { tahun: yr })); if (!R) return;
+  const R = await safe(() => A('report', { tahun: yr, basis })); if (!R) return;
   const T = R.total, cls = n => n < 0 ? 'neg' : '';
-  $('#tab').innerHTML = `<div class="row" style="margin-bottom:8px"><b>Laba rugi ${R.tahun} (basis kas)</b><select style="width:auto;margin:0" onchange="window.RY=this.value;tLaporan()">${[0, 1, 2].map(i => +AD.hari_ini.slice(0, 4) - i).map(y => `<option ${String(y) === String(R.tahun) ? 'selected' : ''}>${y}</option>`).join('')}</select></div>
+  const tagihan = basis === 'tagihan';
+  $('#tab').innerHTML = `<div class="row" style="margin-bottom:8px;flex-wrap:wrap"><b>Laba rugi ${R.tahun}</b>
+      <span style="display:flex;gap:6px"><select style="width:auto;margin:0" onchange="window.RB=this.value;tLaporan()"><option value="kas" ${!tagihan ? 'selected' : ''}>Basis kas</option><option value="tagihan" ${tagihan ? 'selected' : ''}>Basis tagihan</option></select>
+      <select style="width:auto;margin:0" onchange="window.RY=this.value;tLaporan()">${[0, 1, 2].map(i => +AD.hari_ini.slice(0, 4) - i).map(y => `<option ${String(y) === String(R.tahun) ? 'selected' : ''}>${y}</option>`).join('')}</select></span></div>
+    <div class="mut" style="margin-bottom:10px">${tagihan ? 'Basis tagihan: sewa yang sudah dibayar dicatat pada bulan periode tagihannya (sewa Desember yang dibayar November tampil di Desember). Pengeluaran tetap menurut tanggal.' : 'Basis kas: sewa dicatat pada tanggal uang diterima (sewa Desember yang dibayar November tampil di November).'}</div>
     <div class="grid"><div class="stat"><span class="mut">Pendapatan sewa</span><b>${rp(T.sewa)}</b></div><div class="stat"><span class="mut">Pendapatan denda</span><b>${rp(T.denda)}</b></div>${T.lain ? `<div class="stat"><span class="mut">Pendapatan lain (potongan deposit)</span><b>${rp(T.lain)}</b></div>` : ''}
     <div class="stat"><span class="mut">Pengeluaran</span><b>${rp(T.pengeluaran)}</b></div><div class="stat"><span class="mut">Laba bersih</span><b class="${cls(T.laba)}">${rp(T.laba)}</b></div></div>
     <div class="card" style="margin-top:12px;overflow-x:auto"><table><tr><th>Bulan</th><th>Sewa</th><th>Denda</th><th>Lain</th><th>Biaya</th><th>Laba</th></tr>
